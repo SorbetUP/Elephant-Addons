@@ -1,4 +1,4 @@
-name: Trigger addon repository bootstrap
+name: Migrate official addon sources
 
 on:
   pull_request:
@@ -8,14 +8,245 @@ on:
   workflow_dispatch:
 
 permissions:
-  actions: write
-  contents: read
+  contents: write
+
+concurrency:
+  group: migrate-official-addons
+  cancel-in-progress: false
 
 jobs:
-  dispatch:
+  migrate:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.pull_request.head.ref == 'bootstrap/migrate-official-addons' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - name: Dispatch bootstrap on main
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh workflow run bootstrap-elephant-addons.yml --repo SorbetUP/Elephant-Addons --ref main
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Import the physical addons and protected packs
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git clone \
+            --depth 1 \
+            --filter=blob:none \
+            --sparse \
+            --branch develop_next-integration-repair \
+            https://github.com/SorbetUP/ElephantNote.git \
+            /tmp/elephantnote
+          git -C /tmp/elephantnote sparse-checkout set addons packs LICENSE
+
+          rm -rf official packs scripts docs package.json Cargo.toml .gitignore catalog.json
+          rm -f .github/workflows/bootstrap-elephant-addons.yml
+          mkdir -p official packs scripts docs .github/workflows
+          cp -a /tmp/elephantnote/addons/official/. official/
+          cp /tmp/elephantnote/packs/base.enaddonpack packs/base.enaddonpack
+          cp /tmp/elephantnote/packs/develop-parity.enaddonpack packs/develop-parity.enaddonpack
+          cp /tmp/elephantnote/addons/packs/README.md packs/README.md
+          cp /tmp/elephantnote/addons/catalog.json catalog.json
+          cp /tmp/elephantnote/LICENSE LICENSE
+
+          node <<'NODE'
+          const fs = require('node:fs')
+          const catalog = JSON.parse(fs.readFileSync('catalog.json', 'utf8'))
+          catalog.branch = 'main'
+          catalog.repository = 'https://github.com/SorbetUP/Elephant-Addons'
+          catalog.updatedAt = new Date().toISOString()
+          fs.writeFileSync('catalog.json', JSON.stringify(catalog, null, 2) + '\n')
+          NODE
+
+          cat > README.md <<'EOF'
+          # Elephant Addons
+
+          Dépôt officiel des addons physiques et des addon packs d’Elephant.
+
+          Le dépôt principal [ElephantNote](https://github.com/SorbetUP/ElephantNote) conserve uniquement l’hôte générique des addons, le courtier de permissions, l’installateur, les points d’extension et les primitives cœur. Les fonctionnalités optionnelles vivent ici et sont versionnées comme des paquets indépendants.
+
+          ## Organisation
+
+          - `catalog.json` : registre officiel unique.
+          - `official/<slug>/` : paquet autonome d’un addon.
+          - `packs/` : profils d’installation protégés et versionnés.
+          - `scripts/validate-repository.mjs` : validation des frontières de paquets et du catalogue.
+
+          ## Validation
+
+          ```bash
+          npm run validate
+          cargo test --workspace --all-targets
+          ```
+          EOF
+
+          cat > package.json <<'EOF'
+          {
+            "name": "elephant-addons",
+            "private": true,
+            "version": "0.1.0",
+            "type": "module",
+            "scripts": {
+              "validate": "node scripts/validate-repository.mjs"
+            }
+          }
+          EOF
+
+          cat > Cargo.toml <<'EOF'
+          [workspace]
+          resolver = "2"
+          members = [
+            "official/ai-ocr/native",
+            "official/code-execution/native",
+            "official/codex-connection/native",
+            "official/knowledge/native",
+            "official/knowledge/native/knowledge-core",
+            "official/open-models/native",
+            "official/sync/native",
+          ]
+          EOF
+
+          cat > .gitignore <<'EOF'
+          **/target/
+          node_modules/
+          .DS_Store
+          *.enaddon
+          EOF
+
+          cat > docs/repository-layout.md <<'EOF'
+          # Frontières de responsabilité
+
+          ## Elephant core
+
+          Le dépôt applicatif conserve seulement l’infrastructure générique : installation et validation des paquets, permissions, API de vault limitées, runtimes Worker/trusted, hébergement des sidecars/services, slots de réglages et points d’extension UI.
+
+          ## Elephant Addons
+
+          Ce dépôt possède l’implémentation de toutes les fonctionnalités optionnelles : Dashboard, AI, Knowledge, Wiki, Graph, Sync, Calendar, Sites, importeurs, services natifs et addon packs protégés.
+
+          Le dossier d’un addon est sa frontière de release. Son manifeste, son graphe de modules JavaScript, ses sources natives, sa description de build et ses tests restent ensemble. Un addon ne doit pas importer des fichiers d’implémentation d’un autre addon ni du cœur Elephant.
+
+          ## Contrat du registre
+
+          `catalog.json` est le seul catalogue officiel. Chaque entrée pointe vers un manifeste et une entrée runtime internes au paquet. Les packs protégés référencent des IDs du catalogue avec des versions exactes. Le pack `base` est identique à `develop-parity`, à l’exception de Calendar.
+          EOF
+
+          cat > scripts/validate-repository.mjs <<'EOF'
+          import fs from 'node:fs'
+          import path from 'node:path'
+          import { fileURLToPath } from 'node:url'
+
+          const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+          const fail = (message) => { throw new Error(message) }
+          const readJson = (relative) => JSON.parse(fs.readFileSync(path.join(root, relative), 'utf8'))
+          const exists = (relative) => fs.existsSync(path.join(root, relative))
+          const posix = (value) => value.split(path.sep).join('/')
+          const safeRelative = (value, prefix) => {
+            if (typeof value !== 'string' || !value.trim()) fail(`Missing path for ${prefix}`)
+            const normalized = posix(path.posix.normalize(value))
+            if (normalized.startsWith('../') || normalized.startsWith('/') || normalized.includes('/../')) fail(`Unsafe path: ${value}`)
+            if (prefix && !normalized.startsWith(prefix)) fail(`Path ${value} must stay under ${prefix}`)
+            return normalized
+          }
+          const walk = (directory) => {
+            const files = []
+            for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+              if (entry.name === 'target' || entry.name === 'node_modules') continue
+              const absolute = path.join(directory, entry.name)
+              if (entry.isDirectory()) files.push(...walk(absolute))
+              else if (entry.isFile()) files.push(absolute)
+            }
+            return files
+          }
+
+          const catalog = readJson('catalog.json')
+          if (catalog.version !== 1 || catalog.packageRoot !== 'official' || !Array.isArray(catalog.addons)) fail('Invalid catalogue header')
+          if (catalog.branch !== 'main' || catalog.repository !== 'https://github.com/SorbetUP/Elephant-Addons') fail('Catalogue repository metadata is not canonical')
+          const ids = new Set()
+          const versions = new Map()
+          for (const item of catalog.addons) {
+            if (!item.official || !String(item.id).startsWith('elephant.')) fail(`Non-official catalogue entry: ${item.id}`)
+            if (ids.has(item.id)) fail(`Duplicate catalogue id: ${item.id}`)
+            ids.add(item.id)
+            versions.set(item.id, item.version)
+            const packagePrefix = `official/${item.slug}/`
+            const manifestPath = safeRelative(item.manifestPath, packagePrefix)
+            const entryPath = safeRelative(item.entryPath, packagePrefix)
+            if (!exists(manifestPath) || !exists(entryPath)) fail(`Missing catalogue files for ${item.id}`)
+            const manifest = readJson(manifestPath)
+            if (manifest.id !== item.id || manifest.version !== item.version) fail(`Catalogue/manifest mismatch for ${item.id}`)
+            const runtimeEntry = safeRelative(path.posix.join(packagePrefix, manifest.runtime?.entry || ''), packagePrefix)
+            if (!exists(runtimeEntry)) fail(`Missing runtime entry for ${item.id}: ${runtimeEntry}`)
+            const packageRoot = path.join(root, 'official', item.slug)
+            for (const file of walk(packageRoot).filter((candidate) => candidate.endsWith('.js'))) {
+              const source = fs.readFileSync(file, 'utf8')
+              for (const match of source.matchAll(/(?:import\s+(?:[^'\"]+?\s+from\s+)?|export\s+[^'\"]+?\s+from\s+|import\s*\()(['\"])([^'\"]+)\1/g)) {
+                const specifier = match[2]
+                if (!specifier.startsWith('.')) fail(`Non-relative module import in ${posix(path.relative(root, file))}: ${specifier}`)
+                const target = path.resolve(path.dirname(file), specifier)
+                if (target !== packageRoot && !target.startsWith(`${packageRoot}${path.sep}`)) fail(`Import escapes addon package in ${posix(path.relative(root, file))}: ${specifier}`)
+              }
+            }
+          }
+
+          const base = readJson('packs/base.enaddonpack')
+          const parity = readJson('packs/develop-parity.enaddonpack')
+          for (const [name, pack] of [['base', base], ['develop-parity', parity]]) {
+            if (pack.format !== 'elephantnote-addon-pack' || pack.version !== 1 || pack.protected !== true) fail(`Invalid ${name} pack header`)
+            const seen = new Set()
+            for (const addon of pack.addons || []) {
+              if (seen.has(addon.id)) fail(`Duplicate ${addon.id} in ${name}`)
+              seen.add(addon.id)
+              if (addon.source !== 'official' || addon.enabled !== true) fail(`Invalid ${addon.id} flags in ${name}`)
+              if (versions.get(addon.id) !== addon.version) fail(`Pack/catalogue version mismatch for ${addon.id}`)
+            }
+          }
+          const baseIds = new Set(base.addons.map(({ id }) => id))
+          const parityIds = new Set(parity.addons.map(({ id }) => id))
+          if (parityIds.size !== ids.size || [...ids].some((id) => !parityIds.has(id))) fail('Develop parity must contain every official addon')
+          if (baseIds.has('elephant.calendar')) fail('Base pack must exclude Calendar')
+          if ([...parityIds].filter((id) => id !== 'elephant.calendar').some((id) => !baseIds.has(id)) || baseIds.size !== parityIds.size - 1) fail('Base pack must equal develop parity minus Calendar')
+          console.log(`Validated ${ids.size} official addons and 2 protected packs.`)
+          EOF
+
+          cat > .github/workflows/validate.yml <<'EOF'
+          name: Validate addon repository
+
+          on:
+            push:
+              branches: [main]
+            pull_request:
+            workflow_dispatch:
+
+          permissions:
+            contents: read
+
+          jobs:
+            catalogue-and-packs:
+              runs-on: ubuntu-latest
+              timeout-minutes: 15
+              steps:
+                - uses: actions/checkout@v4
+                - uses: actions/setup-node@v4
+                  with:
+                    node-version: '22'
+                - run: node scripts/validate-repository.mjs
+
+            rust:
+              runs-on: ubuntu-latest
+              timeout-minutes: 60
+              steps:
+                - uses: actions/checkout@v4
+                - uses: dtolnay/rust-toolchain@stable
+                  with:
+                    toolchain: '1.91.0'
+                    components: rustfmt
+                - run: cargo fmt --all -- --check
+                - run: cargo test --workspace --all-targets
+          EOF
+
+          node scripts/validate-repository.mjs
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m 'feat: migrate official addons and packs to dedicated repository'
+          git push origin HEAD:main
