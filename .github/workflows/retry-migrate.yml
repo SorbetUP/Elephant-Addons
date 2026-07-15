@@ -1,0 +1,76 @@
+name: Retry official addon migration
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/retry-migrate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: retry-official-addon-migration
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.pull_request.head.ref == 'bootstrap/migrate-official-addons' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Move addons and addon packs to this repository
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git clone --depth 1 --filter=blob:none --sparse \
+            --branch develop_next-integration-repair \
+            https://github.com/SorbetUP/ElephantNote.git /tmp/elephantnote
+          git -C /tmp/elephantnote sparse-checkout set addons packs
+
+          rm -rf official packs catalog.json
+          mkdir -p official packs
+          cp -a /tmp/elephantnote/addons/official/. official/
+          cp /tmp/elephantnote/addons/catalog.json catalog.json
+          cp /tmp/elephantnote/packs/base.enaddonpack packs/base.enaddonpack
+          cp /tmp/elephantnote/packs/develop-parity.enaddonpack packs/develop-parity.enaddonpack
+          cp /tmp/elephantnote/addons/packs/README.md packs/README.md
+
+          node <<'NODE'
+          const fs = require('node:fs')
+          const catalog = JSON.parse(fs.readFileSync('catalog.json', 'utf8'))
+          catalog.branch = 'main'
+          catalog.repository = 'https://github.com/SorbetUP/Elephant-Addons'
+          catalog.updatedAt = new Date().toISOString()
+          fs.writeFileSync('catalog.json', JSON.stringify(catalog, null, 2) + '\n')
+          for (const addon of catalog.addons) {
+            if (!fs.existsSync(addon.manifestPath) || !fs.existsSync(addon.entryPath)) {
+              throw new Error(`Missing package files for ${addon.id}`)
+            }
+          }
+          NODE
+
+          cat > README.md <<'EOF'
+          # Elephant Addons
+
+          Dépôt officiel des addons physiques et des addon packs d’Elephant.
+
+          - `catalog.json` : catalogue officiel.
+          - `official/<slug>/` : paquets addons autonomes.
+          - `packs/` : addon packs protégés et versionnés.
+
+          Le dépôt ElephantNote conserve uniquement le runtime générique, l’installateur, les permissions et les points d’extension.
+          EOF
+
+          rm -f .github/workflows/bootstrap-elephant-addons.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m 'feat: move official addons and packs to dedicated repository'
+          git push origin HEAD:main
