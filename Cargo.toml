@@ -1,0 +1,15 @@
+[workspace]
+resolver = "2"
+members = [
+  "official/ai-ocr/native",
+  "official/code-execution/native",
+  "official/codex-connection/native",
+  "official/knowledge/native",
+  "official/knowledge/native/knowledge-core",
+  "official/open-models/native",
+  "official/sync/native",
+]
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.91"
