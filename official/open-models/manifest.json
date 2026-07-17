@@ -18,6 +18,9 @@
     "views": true,
     "native": true
   },
+  "requires": {
+    "elephant.ai": ">=2.2.0"
+  },
   "native": {
     "runner": "service",
     "protocol": "elephant-addon-service-v1",
