@@ -2,7 +2,7 @@
   "id": "elephant.sync",
   "name": "Sync",
   "version": "1.2.1",
-  "description": "Owns persistent Iroh pairing, bidirectional vault synchronization, baselines and conflict management.",
+  "description": "Owns persistent Iroh pairing, bidirectional vault synchronization, baselines and conflict management through verified platform packages.",
   "author": "Elephant",
   "apiVersion": 1,
   "minAppVersion": "0.18.9",
