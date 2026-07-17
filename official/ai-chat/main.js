@@ -466,6 +466,7 @@ export default class ElephantChatAddon {
   openNote(citation) {
     const path = citationPath(citation)
     if (!path) return
+    this.api.logger?.info?.('[ai-chat] citation opened', { path })
     const store = this.getVaultStore()
     const entries = [...(store?.entries || []), ...(store?.rootEntries || []), ...(store?.openedNotes || [])]
     const existing = entries.find((entry) => entry?.path === path)
@@ -506,6 +507,7 @@ export default class ElephantChatAddon {
         const button = node(documentRef, 'button', 'elephant-chat-citation', `${index + 1}  ${citationTitle(citation)}`)
         button.type = 'button'
         button.title = citationPath(citation)
+        button.setAttribute('aria-label', `Ouvrir la source ${citationTitle(citation)}`)
         button.onclick = () => this.openNote(citation)
         citations.append(button)
       })
