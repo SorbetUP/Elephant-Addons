@@ -1,0 +1,10 @@
+{
+  "name": "elephant-addons",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "test:js": "node --test tests/*.test.mjs",
+    "check:js": "node --check official/ai/inference.js && node --check official/ai/main.js && node --check official/ai-chat/main.js"
+  }
+}
