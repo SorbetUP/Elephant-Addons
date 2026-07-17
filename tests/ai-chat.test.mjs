@@ -54,13 +54,16 @@ const fakeApi = ({ providerAnswer, knowledge = [], wiki = null } = {}) => {
       pinia: null,
       addons: {
         getContributions: (point) => point === 'ai.providers'
-          ? [{ addonId: 'fake', contribution: {
+          ? [{
+              addonId: 'fake',
+              contribution: {
               providerId: 'fake',
               title: 'Fake',
               capabilities: ['chat'],
               getModels: async () => ['model'],
               chat: async () => ({ answer: providerAnswer })
-            } }]
+              }
+            }]
           : []
       }
     },
@@ -73,9 +76,17 @@ test('runs the addon-owned grounded agent and creates approval proposals', async
   const response = JSON.stringify({
     answer: 'La source confirme le plan [1].',
     actions: [{
-      type: 'create_note', rationale: 'Demandé explicitement', query: null, limit: null,
-      path: 'Projects/Plan.md', title: 'Plan', topic: null, markdown: '# Plan', summary: null,
-      sourcePaths: ['Notes/A.md'], proposalId: null
+      type: 'create_note',
+      rationale: 'Demandé explicitement',
+      query: null,
+      limit: null,
+      path: 'Projects/Plan.md',
+      title: 'Plan',
+      topic: null,
+      markdown: '# Plan',
+      summary: null,
+      sourcePaths: ['Notes/A.md'],
+      proposalId: null
     }]
   })
   const { api } = fakeApi({
@@ -96,8 +107,14 @@ test('executes note writes only through the reviewed local action boundary', asy
   const addon = new ElephantChatAddon(api)
   const entry = {
     proposal: {
-      id: 'p1', status: 'proposed',
-      action: { action: 'create_note', path: 'Projects/Plan.md', title: 'Plan', markdown: '# Plan' }
+      id: 'p1',
+      status: 'proposed',
+      action: {
+        action: 'create_note',
+        path: 'Projects/Plan.md',
+        title: 'Plan',
+        markdown: '# Plan'
+      }
     }
   }
   await addon.executeLocalAction(entry)

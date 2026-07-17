@@ -188,13 +188,13 @@ export const parseAssistantPayload = (payload) => {
   const message = choice?.message || {}
   const responseOutput = Array.isArray(payload?.output) ? payload.output : []
   const responseMessage = responseOutput.find((item) => item?.type === 'message')
-  const text = textFromContent(message.content)
-    || String(choice?.text || '')
-    || textFromContent(responseMessage?.content)
-    || String(payload?.output_text || payload?.response || '')
-  const reasoning = textFromContent(message.reasoning_content)
-    || textFromContent(payload?.reasoning)
-    || ''
+  const text = textFromContent(message.content) ||
+    String(choice?.text || '') ||
+    textFromContent(responseMessage?.content) ||
+    String(payload?.output_text || payload?.response || '')
+  const reasoning = textFromContent(message.reasoning_content) ||
+    textFromContent(payload?.reasoning) ||
+    ''
   const toolCalls = Array.isArray(message.tool_calls)
     ? clone(message.tool_calls)
     : responseOutput.filter((item) => item?.type === 'function_call').map((item) => ({
