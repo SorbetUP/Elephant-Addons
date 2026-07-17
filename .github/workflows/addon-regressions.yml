@@ -1,0 +1,42 @@
+name: Addon regression checks
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  sites:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate Sites JavaScript syntax
+        run: |
+          node --check official/sites/main.js
+          node --check official/sites/site-builder.js
+      - name: Run Sites generator regression checks
+        run: node tests/sites-regression.mjs
+      - name: Run Sites runtime integration checks
+        run: node tests/sites-runtime.mjs
+      - name: Validate published metadata
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs')
+          const catalog = JSON.parse(fs.readFileSync('catalog.json', 'utf8'))
+          const manifest = JSON.parse(fs.readFileSync('official/sites/manifest.json', 'utf8'))
+          const base = JSON.parse(fs.readFileSync('packs/base.enaddonpack', 'utf8'))
+          const parity = JSON.parse(fs.readFileSync('packs/develop-parity.enaddonpack', 'utf8'))
+          const catalogEntry = catalog.addons.find((addon) => addon.id === manifest.id)
+          if (!catalogEntry || catalogEntry.version !== manifest.version) throw new Error('Catalog Sites version does not match its manifest')
+          for (const pack of [base, parity]) {
+            const entry = pack.addons.find((addon) => addon.id === manifest.id)
+            if (!entry || entry.version !== manifest.version) throw new Error(`${pack.name} Sites version does not match its manifest`)
+          }
+          NODE
