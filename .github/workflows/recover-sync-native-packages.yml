@@ -12,6 +12,7 @@ on:
 permissions:
   contents: write
 
+# One-shot repair workflow. It is removed after the regenerated packages are committed.
 jobs:
   recover:
     if: >-
