@@ -64,9 +64,8 @@ const optionalRoute = (config, routeName) => {
 
 const endpointFor = (provider, path) => {
   const endpoint = trimSlash(provider.endpoint)
-  const localhost = /^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/|$)/i.test(endpoint)
-  if (!endpoint.startsWith('https://') && !localhost) {
-    throw new Error('AI provider endpoints must use HTTPS, except loopback-only local runtimes.')
+  if (!endpoint.startsWith('https://')) {
+    throw new Error('External AI provider endpoints must use HTTPS. Local models must use the Open Models addon service.')
   }
   if (endpoint.endsWith(path)) return endpoint
   return `${endpoint}${path}`
