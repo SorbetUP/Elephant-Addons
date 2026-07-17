@@ -34,6 +34,18 @@ const visibleRecordFromDraft = (draft, relativePath = '') => ({
   providerOwned: true
 })
 
+const sourcePath = (source = {}) => String(source.path || source.relativePath || source.relative_path || source.document_path || '').trim()
+const sourceTitle = (source = {}) => String(source.title || source.document_title || source.heading || sourcePath(source)).trim()
+const sourceExcerpt = (source = {}) => String(source.excerpt || source.text || source.content || '').trim().slice(0, 600)
+
+const normalizeSources = (sources = []) => {
+  const seen = new Set()
+  return (Array.isArray(sources) ? sources : [])
+    .map((source) => ({ path: sourcePath(source), title: sourceTitle(source), excerpt: sourceExcerpt(source) }))
+    .filter((source) => source.path && !seen.has(source.path) && seen.add(source.path))
+    .slice(0, 24)
+}
+
 export default class ElephantWikiAddon extends ElephantWikiAddonBase {
   invoke(command, payload = {}) {
     const invoke = this.window?.__TAURI__?.core?.invoke
@@ -51,7 +63,7 @@ export default class ElephantWikiAddon extends ElephantWikiAddonBase {
 
   async generateProposals() {
     const existing = await this.loadRecords()
-    const preserved = existing.filter((record) => record.status !== 'proposed' || record.origin === 'manual')
+    const preserved = existing.filter((record) => record.status !== 'proposed' || record.origin === 'manual' || record.origin === 'chat-agent')
     const knowledge = this.api.resources.get(KNOWLEDGE_RESOURCE)
     const inference = this.api.resources.get(AI_INFERENCE_RESOURCE)
 
@@ -129,6 +141,82 @@ export default class ElephantWikiAddon extends ElephantWikiAddonBase {
       .map((record) => ({ ...record, source: 'wiki.records' }))
   }
 
+  async resolveSources(topic, requestedPaths = []) {
+    const requested = new Set((Array.isArray(requestedPaths) ? requestedPaths : []).map(String).filter(Boolean))
+    const candidates = await this.search(topic, { limit: 40 }).catch(() => [])
+    const selected = requested.size
+      ? candidates.filter((candidate) => requested.has(sourcePath(candidate)))
+      : candidates
+    const normalized = normalizeSources(selected)
+    if (requested.size) {
+      for (const path of requested) {
+        if (!normalized.some((source) => source.path === path)) normalized.push({ path, title: path.split('/').pop()?.replace(/\.md$/i, '') || path, excerpt: '' })
+      }
+    }
+    return normalized.slice(0, 24)
+  }
+
+  async propose(topic, options = {}) {
+    const normalizedTopic = String(topic || options.title || '').trim()
+    if (!normalizedTopic) throw new Error('A Wiki topic is required')
+    const title = String(options.title || normalizedTopic).trim()
+    const id = `wiki-chat-${safeSlug(normalizedTopic)}`
+    const records = await this.loadRecords()
+    const existing = records.find((record) => record.id === id)
+    const sources = await this.resolveSources(normalizedTopic, options.sourcePaths)
+    const timestamp = new Date().toISOString()
+    const record = {
+      ...(existing || {}),
+      id,
+      topic: normalizedTopic,
+      title,
+      summary: String(options.summary || `Proposition de Wiki sur ${title}, fondée sur ${sources.length} source${sources.length > 1 ? 's' : ''}.`).trim(),
+      sources,
+      sourceCount: sources.length,
+      status: 'proposed',
+      origin: 'chat-agent',
+      createdAt: existing?.createdAt || timestamp,
+      updatedAt: timestamp,
+      providerOwned: false
+    }
+    const next = [record, ...records.filter((candidate) => candidate.id !== id && !candidate.providerOwned)]
+    await this.saveRecords(next)
+    return record
+  }
+
+  async create(topic, options = {}) {
+    const normalizedTopic = String(topic || options.title || '').trim()
+    if (!normalizedTopic) throw new Error('A Wiki topic is required')
+    const title = String(options.title || normalizedTopic).trim()
+    const sources = await this.resolveSources(normalizedTopic, options.sourcePaths)
+    const relativePath = `Wiki/${safeSlug(title)}.md`
+    const fallbackSources = sources.map((source, index) => `[^source-${index + 1}]: [[${source.path.replace(/\.md$/i, '')}]]${source.excerpt ? ` — ${source.excerpt}` : ''}`).join('\n')
+    const markdown = String(options.markdown || `# ${title}\n\n${options.summary || ''}\n\n## Sources\n\n${fallbackSources || 'Aucune source locale fournie.'}\n`).trim()
+    await this.writeNote(relativePath, `${markdown}\n`)
+
+    const records = await this.loadRecords()
+    const id = `wiki-chat-${safeSlug(normalizedTopic)}`
+    const existing = records.find((record) => record.id === id)
+    const timestamp = new Date().toISOString()
+    const record = {
+      ...(existing || {}),
+      id,
+      topic: normalizedTopic,
+      title,
+      summary: String(options.summary || existing?.summary || '').trim(),
+      path: relativePath,
+      sources,
+      sourceCount: sources.length,
+      status: 'accepted',
+      origin: 'chat-agent',
+      createdAt: existing?.createdAt || timestamp,
+      updatedAt: timestamp,
+      providerOwned: false
+    }
+    await this.saveRecords([record, ...records.filter((candidate) => candidate.id !== id && !candidate.providerOwned)])
+    return record
+  }
+
   async status() {
     const records = await this.loadRecords()
     return {
@@ -138,6 +226,7 @@ export default class ElephantWikiAddon extends ElephantWikiAddonBase {
       searchProvider: this.api.resources.has(SEARCH_RESOURCE),
       knowledgeProvider: this.api.resources.has(KNOWLEDGE_RESOURCE),
       inferenceProvider: this.api.resources.has(AI_INFERENCE_RESOURCE),
+      targetedActions: true,
       engine: 'package-owned-wiki'
     }
   }
@@ -145,8 +234,11 @@ export default class ElephantWikiAddon extends ElephantWikiAddonBase {
   onload(api) {
     super.onload(api)
     api.resources.provide(PROVIDER_RESOURCE, Object.freeze({
+      apiVersion: 2,
       list: () => this.loadRecords(),
       generate: () => this.generateProposals(),
+      propose: (topic, options) => this.propose(topic, options),
+      create: (topic, options) => this.create(topic, options),
       accept: (id) => this.acceptRecord(id),
       dismiss: (id) => this.dismissRecord(id),
       search: (query, options) => this.search(query, options),

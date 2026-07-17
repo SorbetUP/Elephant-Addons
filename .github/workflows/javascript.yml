@@ -1,0 +1,40 @@
+name: JavaScript addon validation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'official/ai/**'
+      - 'official/ai-chat/**'
+      - 'official/wiki/main.v2.js'
+      - 'tests/**'
+      - 'package.json'
+      - '.github/workflows/javascript.yml'
+  pull_request:
+    paths:
+      - 'official/ai/**'
+      - 'official/ai-chat/**'
+      - 'official/wiki/main.v2.js'
+      - 'tests/**'
+      - 'package.json'
+      - '.github/workflows/javascript.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: javascript-addons-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm run check:js
+      - run: npm run test:js
