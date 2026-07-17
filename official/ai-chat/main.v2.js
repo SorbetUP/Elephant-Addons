@@ -15,6 +15,10 @@ const uid = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(36).sl
 const citationPath = (citation = {}) => text(citation.path || citation.relativePath || citation.relative_path || citation.document_path || citation.id)
 
 export default class ElephantChatAddon extends ElephantChatAddonBase {
+  async onload(api) {
+    return super.onload(api)
+  }
+
   async runProvider(option, messages, route, config, signal) {
     if (option.kind === 'addon') {
       if (typeof option.provider.chat !== 'function') throw new Error(`${option.label} n’expose pas l’exécution du chat.`)
