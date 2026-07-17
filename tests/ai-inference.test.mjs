@@ -68,12 +68,12 @@ test('retries a throttled provider and returns structured completion metadata', 
   assert.equal(result.usage.total_tokens, 10)
 })
 
-test('accepts loopback runtimes but rejects insecure remote endpoints', async () => {
+test('rejects every insecure external endpoint, including loopback URLs', async () => {
   const call = async (endpoint) => {
     const api = { experimental: { window: { __TAURI__: { core: { invoke: async () => ({ ok: true, status: 200, body: '{"data":[]}' }) } } } } }
     const inference = createAiInferenceResource(api, async () => ({ providers: { list: [{ id: 'x', endpoint, enabled: true }] } }))
-    return inference.listModels({ providerId: 'x' })
+    return inference.listModels({ providerId: 'x', retries: 0 })
   }
-  await assert.doesNotReject(() => call('http://127.0.0.1:11434/v1'))
+  await assert.rejects(() => call('http://127.0.0.1:11434/v1'), /HTTPS/)
   await assert.rejects(() => call('http://example.test/v1'), /HTTPS/)
 })
