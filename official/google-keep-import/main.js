@@ -1,4 +1,5 @@
 import { extractZipJsonDocuments } from './zip.js'
+import { createSourceImporter } from './sources.js'
 
 const ADDON_ID = 'elephant.google-keep-import'
 const PROVIDER_RESOURCE = 'import.google-keep'
@@ -185,6 +186,13 @@ export default class ElephantGoogleKeepImportAddon {
   constructor(api) {
     this.api = api
     this.window = api.experimental.window
+    this.sourceImporter = createSourceImporter({
+      addonId: ADDON_ID,
+      windowRef: this.window,
+      invoke: (command, payload) => this.invoke(command, payload),
+      writeNote: (notePath, markdown, overwrite = false) => this.writeNote(notePath, markdown, overwrite),
+      safeStem: safeNoteStem
+    })
   }
 
   invoke(command, payload = {}) {
@@ -268,40 +276,10 @@ export default class ElephantGoogleKeepImportAddon {
 
   render(container) {
     const documentRef = container.ownerDocument
-    const root = node(documentRef, 'section', 'elephant-import-page')
+    const root = node(documentRef, 'section', 'en-settings-group elephant-import-settings')
     const selectedFiles = []
     let disposed = false
     let running = false
-
-    const header = node(documentRef, 'header', 'elephant-import-header')
-    const headerCopy = node(documentRef, 'div')
-    headerCopy.append(
-      node(documentRef, 'h2', '', 'Import'),
-      node(documentRef, 'p', '', 'Bring Google Keep notes into your active Elephant vault without sending data anywhere.')
-    )
-    header.append(headerCopy)
-
-    const card = node(documentRef, 'article', 'elephant-import-card')
-    const cardHeader = node(documentRef, 'div', 'elephant-import-card-header')
-    const provider = node(documentRef, 'div', 'elephant-import-provider')
-    const providerIcon = node(documentRef, 'span', 'elephant-import-provider-icon', 'K')
-    const providerCopy = node(documentRef, 'div')
-    providerCopy.append(
-      node(documentRef, 'h3', '', 'Google Keep'),
-      node(documentRef, 'p', '', 'Select a Google Takeout ZIP, individual JSON notes, or the extracted Keep folder.')
-    )
-    provider.append(providerIcon, providerCopy)
-    const destination = node(documentRef, 'code', 'elephant-import-destination', DESTINATION)
-    cardHeader.append(provider, destination)
-
-    const dropZone = node(documentRef, 'div', 'elephant-import-dropzone')
-    dropZone.tabIndex = 0
-    dropZone.setAttribute('role', 'button')
-    dropZone.setAttribute('aria-label', 'Choose Google Keep export files')
-    dropZone.append(
-      node(documentRef, 'strong', '', 'Drop a Takeout archive here'),
-      node(documentRef, 'span', '', 'or choose an archive, JSON files, or an extracted folder')
-    )
 
     const archiveInput = node(documentRef, 'input', 'elephant-import-hidden-input')
     archiveInput.type = 'file'
@@ -313,14 +291,22 @@ export default class ElephantGoogleKeepImportAddon {
     folderInput.setAttribute('webkitdirectory', '')
     folderInput.setAttribute('directory', '')
 
-    const actions = node(documentRef, 'div', 'elephant-import-actions')
-    const chooseArchive = node(documentRef, 'button', 'elephant-import-secondary', 'Choose archive or JSON')
-    const chooseFolder = node(documentRef, 'button', 'elephant-import-secondary', 'Choose extracted folder')
-    const clear = node(documentRef, 'button', 'elephant-import-quiet', 'Clear')
-    const importButton = node(documentRef, 'button', 'elephant-import-primary', 'Import notes')
-    actions.append(chooseArchive, chooseFolder, clear, importButton)
+    const keepRow = node(documentRef, 'div', 'en-settings-row')
+    const keepCopy = node(documentRef, 'div', 'en-settings-row-copy')
+    keepCopy.append(
+      node(documentRef, 'strong', '', 'Google Keep archive'),
+      node(documentRef, 'span', '', 'Convert a Google Takeout ZIP, JSON notes or an extracted Keep folder into local Markdown notes.')
+    )
+    const importButton = node(documentRef, 'button', 'en-primary-button', 'Import Google Keep')
+    importButton.type = 'button'
+    keepRow.append(keepCopy, importButton)
 
-    const selection = node(documentRef, 'div', 'elephant-import-selection', 'No files selected.')
+    const keepActions = node(documentRef, 'div', 'en-settings-inline-actions elephant-import-keep-actions')
+    const folderButton = node(documentRef, 'button', '', 'Import extracted folder')
+    folderButton.type = 'button'
+    const selection = node(documentRef, 'span', 'elephant-import-selection', '')
+    keepActions.append(folderButton, selection)
+
     const option = node(documentRef, 'label', 'elephant-import-option')
     const includeTrashed = node(documentRef, 'input')
     includeTrashed.type = 'checkbox'
@@ -329,27 +315,27 @@ export default class ElephantGoogleKeepImportAddon {
     const progress = node(documentRef, 'div', 'elephant-import-progress')
     const progressBar = node(documentRef, 'span', 'elephant-import-progress-bar')
     progress.append(progressBar)
-    const status = node(documentRef, 'div', 'elephant-import-status', 'Ready to import.')
+    const status = node(documentRef, 'div', 'elephant-import-status', '')
     status.setAttribute('role', 'status')
     status.setAttribute('aria-live', 'polite')
     const resultArea = node(documentRef, 'div', 'elephant-import-results')
 
     const updateControls = () => {
-      const hasFiles = selectedFiles.length > 0
-      importButton.disabled = running || !hasFiles
-      chooseArchive.disabled = running
-      chooseFolder.disabled = running
-      clear.disabled = running || !hasFiles
+      importButton.disabled = running
+      folderButton.disabled = running
       includeTrashed.disabled = running
-      selection.textContent = hasFiles
-        ? `${selectedFiles.length} file${selectedFiles.length === 1 ? '' : 's'} selected — ${selectedFiles.map(fileDisplayName).slice(0, 3).join(', ')}${selectedFiles.length > 3 ? '…' : ''}`
-        : 'No files selected.'
+      importButton.textContent = running ? 'Importing…' : 'Import Google Keep'
+      selection.textContent = selectedFiles.length
+        ? `${selectedFiles.length} file${selectedFiles.length === 1 ? '' : 's'} selected`
+        : ''
     }
 
     const setFiles = (files) => {
-      selectedFiles.splice(0, selectedFiles.length, ...Array.from(files || []).filter((file) => ['zip', 'json'].includes(extension(fileDisplayName(file)))))
-      resultArea.replaceChildren()
-      status.textContent = selectedFiles.length ? 'Selection ready.' : 'No supported ZIP or JSON files were selected.'
+      selectedFiles.splice(
+        0,
+        selectedFiles.length,
+        ...Array.from(files || []).filter((file) => ['zip', 'json'].includes(extension(fileDisplayName(file))))
+      )
       updateControls()
     }
 
@@ -366,20 +352,20 @@ export default class ElephantGoogleKeepImportAddon {
       resultArea.replaceChildren()
       const summary = node(documentRef, 'div', 'elephant-import-summary')
       for (const [label, value] of [['Imported', result.imported], ['Skipped', result.skipped], ['Failed', result.failed]]) {
-        const metric = node(documentRef, 'div', `elephant-import-metric elephant-import-metric-${label.toLowerCase()}`)
-        metric.append(node(documentRef, 'strong', '', String(value)), node(documentRef, 'span', '', label))
+        const metric = node(documentRef, 'span', `elephant-import-metric elephant-import-metric-${label.toLowerCase()}`)
+        metric.append(node(documentRef, 'strong', '', String(value)), documentRef.createTextNode(` ${label.toLowerCase()}`))
         summary.append(metric)
       }
       resultArea.append(summary)
       const issues = result.results.filter((item) => item.error || item.skipped)
       if (issues.length) {
         const details = node(documentRef, 'details', 'elephant-import-details')
-        const detailsSummary = node(documentRef, 'summary', '', `Show ${issues.length} skipped or failed item${issues.length === 1 ? '' : 's'}`)
+        details.append(node(documentRef, 'summary', '', `Show ${issues.length} skipped or failed item${issues.length === 1 ? '' : 's'}`))
         const list = node(documentRef, 'ul')
         for (const item of issues.slice(0, 200)) {
           list.append(node(documentRef, 'li', '', `${item.sourceName || 'Unknown file'} — ${item.error || item.reason}`))
         }
-        details.append(detailsSummary, list)
+        details.append(list)
         resultArea.append(details)
       }
     }
@@ -389,6 +375,7 @@ export default class ElephantGoogleKeepImportAddon {
       running = true
       progressBar.style.width = '0%'
       resultArea.replaceChildren()
+      status.textContent = 'Preparing import…'
       updateControls()
       try {
         const result = await this.importFiles(selectedFiles, {
@@ -397,44 +384,43 @@ export default class ElephantGoogleKeepImportAddon {
         })
         progressBar.style.width = '100%'
         status.textContent = result.failed
-          ? `Import completed with ${result.failed} failure${result.failed === 1 ? '' : 's'}.`
-          : `Import completed. ${result.imported} note${result.imported === 1 ? '' : 's'} added to ${DESTINATION}.`
+          ? `Imported ${result.imported} note${result.imported === 1 ? '' : 's'} with ${result.failed} failure${result.failed === 1 ? '' : 's'}.`
+          : `Imported ${result.imported} note${result.imported === 1 ? '' : 's'} into ${DESTINATION}.`
         renderResult(result)
       } catch (error) {
         progressBar.style.width = '0%'
         status.textContent = error instanceof Error ? error.message : String(error)
       } finally {
         running = false
+        selectedFiles.splice(0)
+        archiveInput.value = ''
+        folderInput.value = ''
         updateControls()
       }
     }
 
-    chooseArchive.onclick = () => archiveInput.click()
-    chooseFolder.onclick = () => folderInput.click()
-    clear.onclick = () => setFiles([])
-    importButton.onclick = () => void runImport()
-    archiveInput.onchange = () => setFiles(archiveInput.files)
-    folderInput.onchange = () => setFiles(folderInput.files)
-    dropZone.onclick = () => archiveInput.click()
-    dropZone.onkeydown = (event) => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault()
-        archiveInput.click()
-      }
+    importButton.onclick = () => archiveInput.click()
+    folderButton.onclick = () => folderInput.click()
+    archiveInput.onchange = () => {
+      setFiles(archiveInput.files)
+      void runImport()
     }
-    dropZone.ondragover = (event) => {
-      event.preventDefault()
-      dropZone.classList.add('is-dragging')
-    }
-    dropZone.ondragleave = () => dropZone.classList.remove('is-dragging')
-    dropZone.ondrop = (event) => {
-      event.preventDefault()
-      dropZone.classList.remove('is-dragging')
-      setFiles(event.dataTransfer?.files)
+    folderInput.onchange = () => {
+      setFiles(folderInput.files)
+      void runImport()
     }
 
-    card.append(cardHeader, dropZone, archiveInput, folderInput, actions, selection, option, progress, status, resultArea)
-    root.append(header, card)
+    root.append(
+      keepRow,
+      archiveInput,
+      folderInput,
+      keepActions,
+      option,
+      progress,
+      status,
+      resultArea,
+      this.sourceImporter.render(documentRef, node)
+    )
     container.replaceChildren(root)
     updateControls()
     return () => {
@@ -445,12 +431,14 @@ export default class ElephantGoogleKeepImportAddon {
 
   async onload(api) {
     api.resources.provide(PROVIDER_RESOURCE, Object.freeze({
-      apiVersion: 2,
+      apiVersion: 1,
       owner: ADDON_ID,
       parse: (input, sourceName = '') => parseKeepDocument(input, sourceName),
       toMarkdown: (input, sourceName = '') => keepDocumentToMarkdown(parseKeepDocument(input, sourceName)),
       importDocuments: (documents, options = {}) => this.importDocuments(documents, options),
       importFiles: (files, options = {}) => this.importFiles(files, options),
+      importPage: (url, destination = 'Sources') => this.sourceImporter.importPage(url, destination),
+      importRss: (url, destination = 'Sources', limit = 20) => this.sourceImporter.importRss(url, destination, limit),
       destination: DESTINATION
     }))
 
@@ -461,40 +449,21 @@ export default class ElephantGoogleKeepImportAddon {
     })
 
     api.ui.registerStyle(`
-      .elephant-import-page { height:100%; overflow:auto; box-sizing:border-box; display:grid; align-content:start; gap:20px; padding:22px; }
-      .elephant-import-header h2,.elephant-import-header p,.elephant-import-card h3,.elephant-import-card p { margin:0; }
-      .elephant-import-header p,.elephant-import-provider p,.elephant-import-selection,.elephant-import-status { color:var(--en-muted); }
-      .elephant-import-header { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
-      .elephant-import-card { display:grid; gap:16px; padding:18px; border:1px solid var(--en-border); border-radius:16px; background:var(--en-surface); box-shadow:0 10px 30px color-mix(in srgb, var(--en-text) 6%, transparent); }
-      .elephant-import-card-header { display:flex; align-items:center; justify-content:space-between; gap:16px; }
-      .elephant-import-provider { display:flex; align-items:center; gap:12px; min-width:0; }
-      .elephant-import-provider-icon { display:grid; place-items:center; width:38px; height:38px; flex:none; border-radius:11px; background:#f6c744; color:#342900; font-weight:800; }
-      .elephant-import-destination { max-width:48%; overflow:hidden; text-overflow:ellipsis; padding:7px 9px; border-radius:8px; background:var(--en-soft); color:var(--en-muted); white-space:nowrap; }
-      .elephant-import-dropzone { display:grid; place-items:center; gap:5px; min-height:150px; padding:22px; border:1px dashed var(--en-border); border-radius:14px; background:var(--en-soft); text-align:center; cursor:pointer; transition:border-color .15s ease,transform .15s ease,background .15s ease; }
-      .elephant-import-dropzone:hover,.elephant-import-dropzone:focus-visible,.elephant-import-dropzone.is-dragging { border-color:var(--en-accent); background:color-mix(in srgb, var(--en-accent) 8%, var(--en-soft)); outline:none; transform:translateY(-1px); }
-      .elephant-import-dropzone span { color:var(--en-muted); font-size:13px; }
+      .elephant-import-settings { display:grid; gap:14px; }
       .elephant-import-hidden-input { display:none; }
-      .elephant-import-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
-      .elephant-import-actions button { min-height:36px; padding:0 13px; border:1px solid var(--en-border); border-radius:9px; color:var(--en-text); cursor:pointer; }
-      .elephant-import-secondary { background:var(--en-surface); }
-      .elephant-import-quiet { background:transparent; }
-      .elephant-import-primary { margin-left:auto; border-color:var(--en-accent)!important; background:var(--en-accent); color:var(--en-accent-contrast,#fff)!important; font-weight:650; }
-      .elephant-import-actions button:disabled { opacity:.5; cursor:default; }
-      .elephant-import-selection { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; }
+      .elephant-import-keep-actions { min-height:28px; }
+      .elephant-import-selection,.elephant-import-status,.elephant-source-import-status { color:var(--en-muted); font-size:13px; }
       .elephant-import-option { display:flex; align-items:center; gap:8px; color:var(--en-muted); font-size:13px; }
-      .elephant-import-progress { height:5px; overflow:hidden; border-radius:999px; background:var(--en-soft); }
+      .elephant-import-progress { height:4px; overflow:hidden; border-radius:999px; background:var(--en-soft); }
       .elephant-import-progress-bar { display:block; width:0; height:100%; border-radius:inherit; background:var(--en-accent); transition:width .12s ease; }
-      .elephant-import-status { min-height:20px; font-size:13px; }
-      .elephant-import-results { display:grid; gap:10px; }
-      .elephant-import-summary { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
-      .elephant-import-metric { display:grid; gap:2px; padding:11px; border:1px solid var(--en-border); border-radius:11px; background:var(--en-soft); }
-      .elephant-import-metric strong { font-size:20px; }
-      .elephant-import-metric span { color:var(--en-muted); font-size:12px; }
-      .elephant-import-details { border:1px solid var(--en-border); border-radius:11px; padding:10px 12px; }
+      .elephant-import-results { display:grid; gap:8px; }
+      .elephant-import-summary { display:flex; flex-wrap:wrap; gap:8px 14px; font-size:13px; }
+      .elephant-import-metric { color:var(--en-muted); }
+      .elephant-import-metric strong { color:var(--en-text); }
+      .elephant-import-details { border:1px solid var(--en-border); border-radius:9px; padding:9px 11px; }
       .elephant-import-details summary { cursor:pointer; }
-      .elephant-import-details ul { max-height:220px; overflow:auto; margin:10px 0 0; padding-left:20px; color:var(--en-muted); font-size:12px; }
-      @media (max-width:680px) { .elephant-import-page{padding:14px}.elephant-import-card-header{align-items:flex-start;flex-direction:column}.elephant-import-destination{max-width:100%}.elephant-import-primary{margin-left:0;width:100%}.elephant-import-summary{grid-template-columns:1fr}.elephant-import-dropzone{min-height:120px} }
-    `, 'google-keep-import-package-v2')
+      .elephant-import-details ul { max-height:220px; overflow:auto; margin:8px 0 0; padding-left:20px; color:var(--en-muted); font-size:12px; }
+    `, 'google-keep-import-package-v3')
 
     api.settings.registerSection({
       id: `${ADDON_ID}.settings`,
