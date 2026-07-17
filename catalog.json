@@ -161,7 +161,7 @@
     {
       "id": "elephant.google-keep-import",
       "slug": "google-keep-import",
-      "name": "Import",
+      "name": "Google Keep Import",
       "version": "1.2.0",
       "description": "Imports Google Keep Takeout ZIP archives, extracted folders, web pages and RSS or Atom feeds into scoped local Markdown notes.",
       "author": "Elephant",
