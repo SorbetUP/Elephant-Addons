@@ -14,7 +14,7 @@ assert.equal(builderModule.routeForMarkdown('guides/start.md'), 'guides/start/in
 const plan = builderModule.createSitePlan({
   sourceDirectory: 'Sites',
   notes: [
-    { path: 'Sites/index.md', markdown: '# Home\n\nGo to [[Guide]].\n\n![Logo](assets/logo.png)' },
+    { path: 'Sites/index.md', markdown: '# Home\n\nGo to [[Guide]].\n\n![Logo](assets/logo.png)\n\n![Shared](../.assets/shared.png)' },
     { path: 'Sites/Guide.md', markdown: '# Guide\n\n[Home](index.md)\n\n| A | B |\n|---|---|\n| 1 | 2 |' }
   ],
   resolveAssetUrl: (path) => `asset://${path}`,
@@ -24,8 +24,17 @@ const plan = builderModule.createSitePlan({
 assert.equal(plan.pages.length, 2)
 assert.match(plan.files.get('index.html'), /href="Guide\/"/)
 assert.match(plan.files.get('index.html'), /asset:\/\/Sites\/assets\/logo\.png/)
+assert.match(plan.files.get('index.html'), /asset:\/\/\.assets\/shared\.png/)
 assert.match(plan.files.get('Guide/index.html'), /<table>/)
 assert.ok(plan.files.has('elephant-site.json'))
+assert.throws(() => builderModule.createSitePlan({
+  sourceDirectory: 'Sites',
+  notes: [
+    { path: 'Sites/Foo.md', markdown: '# Foo' },
+    { path: 'Sites/Foo/index.md', markdown: '# Foo index' }
+  ],
+  resolveAssetUrl: (path) => `asset://${path}`
+}), /same site route/)
 
 assert.match(mainSource, /api\.settings\.registerSection\(/)
 assert.doesNotMatch(mainSource, /workspace\.registerView\(/)
