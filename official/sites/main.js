@@ -1,3 +1,5 @@
+import { createSitePlan, normalizeDirectory, slugify } from './site-builder'
+
 const ADDON_ID = 'elephant.sites'
 const PROVIDER_RESOURCE = 'sites.provider'
 const DEFAULT_DIRECTORY = 'Sites'
@@ -16,6 +18,15 @@ const normalizeRelativePath = (value = '') => String(value)
   .join('/')
 
 const appendIndex = (directory = '') => `${String(directory).replaceAll('\\', '/').replace(/\/+$/g, '')}/index.html`
+const joinPath = (...parts) => parts
+  .flatMap((part) => String(part || '').replaceAll('\\', '/').split('/'))
+  .filter((part) => part && part !== '.')
+  .reduce((result, part) => {
+    if (part === '..') result.pop()
+    else result.push(part)
+    return result
+  }, [])
+  .join('/')
 
 export default class ElephantSitesAddon {
   constructor(api) {
@@ -28,6 +39,66 @@ export default class ElephantSitesAddon {
     const invoke = this.window?.__TAURI__?.core?.invoke
     if (typeof invoke !== 'function') throw new Error(`Tauri command API is unavailable for ${command}`)
     return invoke(command, payload)
+  }
+
+  async listNotes(sourceDirectory) {
+    const entries = await this.invoke('tauri_addons_notes_list', { addonId: ADDON_ID, prefix: sourceDirectory })
+    const notes = []
+    for (const entry of Array.isArray(entries) ? entries : []) {
+      const path = String(entry?.path || entry?.relativePath || '').trim()
+      if (!/\.(?:md|markdown)$/i.test(path)) continue
+      const result = await this.invoke('tauri_addons_notes_read', { addonId: ADDON_ID, path })
+      notes.push({ ...entry, path, markdown: String(result?.markdown || result?.content || '') })
+    }
+    return notes
+  }
+
+  async generate({ sourceDirectory = DEFAULT_DIRECTORY, mode = 'preview' } = {}) {
+    const source = normalizeDirectory(sourceDirectory)
+    const notes = await this.listNotes(source)
+    const outputRoot = joinPath('.elephantnote', mode === 'build' ? 'site-builds' : 'site-previews', slugify(source))
+    const assets = new Map()
+    const resolveAssetUrl = (assetPath) => {
+      const normalized = String(assetPath || '').replaceAll('\\', '/').replace(/^\.\//, '')
+      const isVaultAsset = normalized.startsWith('.assets/')
+      const output = isVaultAsset
+        ? joinPath('assets', 'vault', normalized)
+        : joinPath('assets', 'content', normalized.replace(`${source}/`, ''))
+      const input = isVaultAsset
+        ? normalized
+        : normalized.startsWith(`${source}/`) ? normalized : joinPath(source, normalized)
+      assets.set(input, output)
+      return `./${output}`
+    }
+    const plan = createSitePlan({ sourceDirectory: source, notes, resolveAssetUrl })
+    await this.invoke('tauri_vault_remove_path', { pathname: outputRoot }).catch(() => {})
+    for (const [relative, content] of plan.files.entries()) {
+      await this.invoke('tauri_addons_call', {
+        addonId: ADDON_ID,
+        method: 'notes.write',
+        params: { path: joinPath(outputRoot, relative), content, overwrite: true }
+      })
+    }
+    for (const [input, output] of assets.entries()) {
+      const binary = await this.invoke('tauri_vault_read_binary', { pathname: input })
+      await this.invoke('tauri_vault_write_binary', {
+        pathname: joinPath(outputRoot, output),
+        dataBase64: binary.dataBase64
+      })
+    }
+    const info = {
+      siteId: `site:${outputRoot}`,
+      relativePath: outputRoot,
+      indexPath: joinPath(outputRoot, 'index.html'),
+      sourceDirectory: source,
+      pages: plan.pages.length,
+      assets: assets.size,
+      mode,
+      running: mode === 'preview'
+    }
+    this.site = info
+    this.api.logger?.info?.('[sites] generated site', { mode, sourceDirectory: source, pages: info.pages, assets: info.assets })
+    return info
   }
 
   async openPreview(params = {}) {
@@ -60,19 +131,27 @@ export default class ElephantSitesAddon {
     return { ...this.site }
   }
 
-  stopPreview(siteId = this.site?.siteId) {
-    if (!this.site || (siteId && siteId !== this.site.siteId)) return { stopped: false }
+  async stopPreview(siteId = this.site?.siteId) {
+    if (!this.site || (siteId && siteId !== this.site.siteId)) return { stopped: false, cleaned: false }
     const stopped = this.site.siteId
+    await this.invoke('tauri_vault_remove_path', { pathname: this.site.relativePath }).catch(() => {})
     this.site = null
-    return { stopped: true, siteId: stopped }
+    this.api.logger?.info?.('[sites] preview stopped', { siteId: stopped })
+    return { stopped: true, siteId: stopped, cleaned: true }
   }
 
-  async openExternal(url = this.site?.url) {
-    if (!url) return null
+  async openExternal(info = this.site) {
+    const indexPath = typeof info === 'string' ? info : info?.indexPath
+    if (!indexPath) return null
+    const openPath = this.window?.__TAURI__?.opener?.openPath
+    if (typeof openPath === 'function') {
+      await openPath(info.indexPath)
+      return { opened: true, path: indexPath }
+    }
     const openUrl = this.window?.__TAURI__?.opener?.openUrl
     if (typeof openUrl !== 'function') throw new Error('Tauri opener API is unavailable')
-    await openUrl(url)
-    return { opened: true, url }
+    await openUrl(this.site?.url || indexPath)
+    return { opened: true, path: indexPath }
   }
 
   render(container) {
@@ -172,14 +251,17 @@ export default class ElephantSitesAddon {
       openExternal: (url) => this.openExternal(url)
     }))
 
-    api.workspace.registerView({
-      id: `${ADDON_ID}.workspace`,
+    api.settings.registerSection({
+      id: `${ADDON_ID}.settings`,
+      section: 'sites',
+      standalone: true,
+      navigationLabel: 'Sites',
+      navigationIcon: 'globe',
+      chrome: false,
       title: 'Sites',
       description: 'Preview a permission-scoped static vault directory.',
-      icon: 'globe',
-      kind: 'sites-v3',
-      component: bridge.createDomComponent({ name: 'ElephantPhysicalSites', mount: (element) => this.render(element) }),
-      order: 55
+      order: 55,
+      render: (container) => this.render(container)
     })
   }
 
