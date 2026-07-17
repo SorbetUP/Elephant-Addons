@@ -2,7 +2,7 @@
   "version": 1,
   "branch": "main",
   "packageRoot": "official",
-  "updatedAt": "2026-07-17T00:29:48Z",
+  "updatedAt": "2026-07-17T01:25:00Z",
   "addons": [
     {
       "id": "elephant.dashboard",
@@ -30,12 +30,12 @@
       "id": "elephant.ai-chat",
       "slug": "ai-chat",
       "name": "Chat",
-      "version": "1.1.0",
-      "description": "Adds the AI chat sidebar and chat route settings.",
+      "version": "2.0.0",
+      "description": "Adds the persistent vault-grounded AI agent, provider/model routing, citations and reviewed note or Wiki actions.",
       "author": "Elephant",
       "official": true,
       "manifestPath": "official/ai-chat/manifest.json",
-      "entryPath": "official/ai-chat/main.js"
+      "entryPath": "official/ai-chat/main.v2.js"
     },
     {
       "id": "elephant.ai-search",
@@ -63,8 +63,8 @@
       "id": "elephant.wiki",
       "slug": "wiki",
       "name": "Wiki",
-      "version": "1.4.0",
-      "description": "Owns semantic Wiki proposals, evidence and accepted Wiki pages.",
+      "version": "1.5.0",
+      "description": "Owns semantic Wiki proposals and pages, including targeted propose, create and dismiss operations for the reviewed AI agent.",
       "author": "Elephant",
       "official": true,
       "manifestPath": "official/wiki/manifest.json",
