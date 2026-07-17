@@ -70,7 +70,7 @@ const relativePath = (fromDirectory = '', toPath = '') => {
   return [...steps, ...to.slice(common)].join('/') || '.'
 }
 
-const joinRelative = (baseDirectory = '', target = '') => normalizeSegments(
+const resolveRelativePath = (baseDirectory = '', target = '') => normalizeSegments(
   [baseDirectory, target].filter(Boolean).join('/')
 )
 
@@ -97,7 +97,9 @@ const normalizeWikiTarget = (value = '') => {
 }
 
 const createHrefResolver = ({ sourceDirectory, routeMap, pagePath, resolveAssetUrl }) => {
+  const sourceRoot = normalizeSegments(sourceDirectory)
   const pageDirectory = normalizeSegments(pagePath).split('/').slice(0, -1).join('/')
+  const pageVaultDirectory = resolveRelativePath(sourceRoot, pageDirectory)
   const pageRoute = routeMap.get(normalizeSegments(pagePath)) || routeForMarkdown(pagePath)
   const outputDirectory = outputDirectoryForRoute(pageRoute)
 
@@ -107,11 +109,21 @@ const createHrefResolver = ({ sourceDirectory, routeMap, pagePath, resolveAssetU
     if (/^(?:[a-z]+:|#|\/\/)/i.test(href)) return href
 
     const { target, suffix } = splitSuffix(wiki ? normalizeWikiTarget(href) : href)
-    const decodedTarget = decodeURIComponent(target || '').replace(/^\.\//, '')
-    const sourceTarget = joinRelative(pageDirectory, decodedTarget)
-    const markdownCandidates = /\.(md|markdown)$/i.test(sourceTarget)
-      ? [sourceTarget]
-      : [`${sourceTarget}.md`, `${sourceTarget}.markdown`, `${sourceTarget}/index.md`]
+    let decodedTarget = target || ''
+    try { decodedTarget = decodeURIComponent(decodedTarget) } catch { /* Keep malformed URLs literal. */ }
+    const rootRelative = decodedTarget.startsWith('/')
+    decodedTarget = decodedTarget.replace(/^\.?\//, '')
+    const vaultTarget = resolveRelativePath(rootRelative ? sourceRoot : pageVaultDirectory, decodedTarget)
+    const sourceTarget = vaultTarget === sourceRoot
+      ? ''
+      : vaultTarget.startsWith(`${sourceRoot}/`)
+        ? vaultTarget.slice(sourceRoot.length + 1)
+        : null
+    const markdownCandidates = sourceTarget == null
+      ? []
+      : /\.(md|markdown)$/i.test(sourceTarget)
+        ? [sourceTarget]
+        : [`${sourceTarget}.md`, `${sourceTarget}.markdown`, `${sourceTarget}/index.md`]
     const markdownTarget = markdownCandidates.find((candidate) => routeMap.has(candidate))
 
     if (markdownTarget) {
@@ -122,8 +134,7 @@ const createHrefResolver = ({ sourceDirectory, routeMap, pagePath, resolveAssetU
       return `${result || './'}${suffix}`
     }
 
-    const vaultRelative = joinRelative(sourceDirectory, sourceTarget)
-    return `${resolveAssetUrl(vaultRelative)}${suffix}`
+    return `${resolveAssetUrl(vaultTarget, { pagePath, pageRoute })}${suffix}`
   }
 }
 
@@ -287,6 +298,12 @@ export const createSitePlan = ({ sourceDirectory, notes, resolveAssetUrl, genera
   if (!normalizedNotes.length) throw new Error('The selected folder does not contain any Markdown note')
 
   const routeMap = new Map(normalizedNotes.map((note) => [normalizeSegments(note.relativePath), note.route]))
+  const routeOwners = new Map()
+  for (const note of normalizedNotes) {
+    const previous = routeOwners.get(note.route)
+    if (previous) throw new Error(`Two notes generate the same site route: ${previous} and ${note.relativePath}`)
+    routeOwners.set(note.route, note.relativePath)
+  }
   const siteTitle = source.split('/').pop() || 'Elephant site'
   const files = new Map([['assets/elephant-site.css', SITE_CSS]])
   const navigationBase = normalizedNotes.map((note) => ({ title: note.title, route: note.route }))
