@@ -6,6 +6,7 @@ on:
     paths:
       - 'official/ai/**'
       - 'official/ai-chat/**'
+      - 'official/wiki/main.v2.js'
       - 'tests/**'
       - 'package.json'
       - '.github/workflows/javascript.yml'
@@ -13,6 +14,7 @@ on:
     paths:
       - 'official/ai/**'
       - 'official/ai-chat/**'
+      - 'official/wiki/main.v2.js'
       - 'tests/**'
       - 'package.json'
       - '.github/workflows/javascript.yml'
