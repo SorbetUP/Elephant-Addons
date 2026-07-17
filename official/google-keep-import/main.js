@@ -1,10 +1,6 @@
-import { extractZipJsonDocuments } from './zip.js'
-import { createSourceImporter } from './sources.js'
-
 const ADDON_ID = 'elephant.google-keep-import'
 const PROVIDER_RESOURCE = 'import.google-keep'
 const DESTINATION = 'Imported/Google Keep'
-const COLLISION_ERROR = /already exists|overwrite was not requested/i
 
 const node = (documentRef, tag, className = '', text = '') => {
   const element = documentRef.createElement(tag)
@@ -16,8 +12,6 @@ const node = (documentRef, tag, className = '', text = '') => {
 const asString = (value) => typeof value === 'string' ? value : value == null ? '' : String(value)
 const basename = (value = '') => asString(value).replaceAll('\\', '/').split('/').pop() || ''
 const withoutExtension = (value = '') => basename(value).replace(/\.json$/i, '')
-const normalizeInlineText = (value = '') => asString(value).replace(/\r\n?/g, '\n').trim()
-const normalizeListText = (value = '') => normalizeInlineText(value).replace(/\s*\n\s*/g, ' ')
 
 const timestampToIso = (value) => {
   if (value == null || value === '') return ''
@@ -50,86 +44,57 @@ const normalizeLabels = (value) => (Array.isArray(value) ? value : [])
 
 const normalizeList = (value) => (Array.isArray(value) ? value : [])
   .map((item) => ({
-    text: normalizeListText(item?.text ?? item?.textContent),
+    text: asString(item?.text ?? item?.textContent).trim(),
     checked: item?.isChecked === true || item?.checked === true
   }))
   .filter((item) => item.text)
 
 const normalizeAttachments = (value) => (Array.isArray(value) ? value : [])
-  .map((attachment) => ({
-    path: asString(attachment?.filePath || attachment?.fileName || attachment?.name).trim(),
-    mimeType: asString(attachment?.mimetype || attachment?.mimeType).trim()
-  }))
-  .filter((attachment) => attachment.path || attachment.mimeType)
-
-const normalizeLinks = (value) => (Array.isArray(value) ? value : [])
-  .map((annotation) => annotation?.webLink || annotation?.link || annotation)
-  .map((link) => ({
-    title: asString(link?.title).trim(),
-    url: asString(link?.url || link?.uri).trim(),
-    description: asString(link?.description).trim()
-  }))
-  .filter((link) => /^https?:\/\//i.test(link.url))
-
-const looksLikeKeepNote = (value) => [
-  'title', 'textContent', 'text', 'listContent', 'listItems', 'labels', 'attachments',
-  'createdTimestampUsec', 'userEditedTimestampUsec', 'isPinned', 'isArchived', 'isTrashed',
-  'color', 'annotations'
-].some((key) => Object.hasOwn(value, key))
+  .map((attachment) => asString(
+    attachment?.filePath || attachment?.fileName || attachment?.mimetype || attachment?.name
+  ).trim())
+  .filter(Boolean)
 
 export const parseKeepDocument = (input, sourceName = '') => {
   const value = typeof input === 'string' ? JSON.parse(input) : input
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new TypeError('A Google Keep note must be a JSON object')
   }
-  if (!looksLikeKeepNote(value)) throw new TypeError('The JSON file is not a Google Keep note')
 
   const sourceStem = withoutExtension(sourceName)
-  const title = normalizeInlineText(value.title) || sourceStem || 'Untitled Keep note'
+  const title = asString(value.title).trim() || sourceStem || 'Untitled Keep note'
   const createdAt = timestampToIso(value.createdTimestampUsec ?? value.createdAt ?? value.created)
   const updatedAt = timestampToIso(value.userEditedTimestampUsec ?? value.updatedAt ?? value.updated)
 
   return {
     title,
-    text: normalizeInlineText(value.textContent ?? value.text),
+    text: asString(value.textContent ?? value.text).trim(),
     list: normalizeList(value.listContent ?? value.listItems),
     labels: normalizeLabels(value.labels),
     attachments: normalizeAttachments(value.attachments),
-    links: normalizeLinks(value.annotations),
     createdAt,
     updatedAt,
     pinned: value.isPinned === true,
     archived: value.isArchived === true,
     trashed: value.isTrashed === true,
-    color: asString(value.color).trim(),
     sourceName: basename(sourceName),
     sourceStem
   }
 }
 
-const attachmentLabel = (attachment) => {
-  const name = basename(attachment.path) || attachment.path || 'Attachment'
-  return attachment.mimeType ? `${name} (${attachment.mimeType})` : name
-}
-
 export const keepDocumentToMarkdown = (note) => {
-  const type = note.list.length ? 'task' : 'note'
-  const createdAt = note.createdAt || note.updatedAt
-  const updatedAt = note.updatedAt || note.createdAt
   const frontmatter = [
     '---',
     'source: google-keep',
     `title: ${yamlString(note.title)}`,
-    `type: ${yamlString(type)}`,
-    `tags: [${note.labels.map(yamlString).join(', ')}]`,
     `pinned: ${Boolean(note.pinned)}`,
     `archived: ${Boolean(note.archived)}`,
     `trashed: ${Boolean(note.trashed)}`
   ]
-  if (createdAt) frontmatter.push(`createdAt: ${yamlString(createdAt)}`)
-  if (updatedAt) frontmatter.push(`updatedAt: ${yamlString(updatedAt)}`)
-  if (note.color) frontmatter.push(`googleKeepColor: ${yamlString(note.color)}`)
-  if (note.sourceName) frontmatter.push(`sourceFile: ${yamlString(note.sourceName)}`)
+  if (note.createdAt) frontmatter.push(`created: ${yamlString(note.createdAt)}`)
+  if (note.updatedAt) frontmatter.push(`updated: ${yamlString(note.updatedAt)}`)
+  if (note.sourceName) frontmatter.push(`source_file: ${yamlString(note.sourceName)}`)
+  if (note.labels.length) frontmatter.push(`tags: [${note.labels.map(yamlString).join(', ')}]`)
   frontmatter.push('---')
 
   const body = [`# ${note.title}`]
@@ -138,61 +103,27 @@ export const keepDocumentToMarkdown = (note) => {
     body.push(note.list.map((item) => `- [${item.checked ? 'x' : ' '}] ${item.text}`).join('\n'))
   }
   if (note.attachments.length) {
-    body.push('## Attachments', note.attachments.map((attachment) => `- ${attachmentLabel(attachment)}`).join('\n'))
-  }
-  if (note.links.length) {
-    body.push(
-      '## Links',
-      note.links.map((link) => `- [${link.title || link.url}](${link.url})${link.description ? ` — ${link.description}` : ''}`).join('\n')
-    )
+    body.push('## Attachments', note.attachments.map((attachment) => `- ${attachment}`).join('\n'))
   }
   return `${frontmatter.join('\n')}\n\n${body.join('\n\n')}\n`
 }
 
-const fileDisplayName = (file) => asString(file?.webkitRelativePath || file?.name).trim()
-const extension = (value) => basename(value).toLowerCase().split('.').pop() || ''
-
-export const readKeepImportFiles = async(files, onProgress = () => {}) => {
-  const selected = Array.from(files || [])
-  const documents = []
-  let processed = 0
-  for (const file of selected) {
-    const name = fileDisplayName(file)
-    const type = extension(name)
-    onProgress({ phase: 'reading', processed, total: selected.length, name })
-    if (type === 'json') {
-      try {
-        documents.push({ name, content: await file.text() })
-      } catch (error) {
-        documents.push({ name, error: error instanceof Error ? error.message : String(error) })
-      }
-    } else if (type === 'zip') {
-      try {
-        const archiveDocuments = await extractZipJsonDocuments(file)
-        documents.push(...archiveDocuments)
-      } catch (error) {
-        documents.push({ name, error: error instanceof Error ? error.message : String(error) })
-      }
-    }
-    processed += 1
+const createUniquePath = (note, occupied) => {
+  const stem = safeNoteStem(note.title || note.sourceStem)
+  let index = 1
+  let relativePath = `${DESTINATION}/${stem}.md`
+  while (occupied.has(relativePath.toLowerCase())) {
+    index += 1
+    relativePath = `${DESTINATION}/${stem} ${index}.md`
   }
-  onProgress({ phase: 'reading', processed, total: selected.length, name: '' })
-  return documents
+  occupied.add(relativePath.toLowerCase())
+  return relativePath
 }
-
-const candidatePath = (stem, index) => `${DESTINATION}/${stem}${index === 1 ? '' : ` ${index}`}.md`
 
 export default class ElephantGoogleKeepImportAddon {
   constructor(api) {
     this.api = api
     this.window = api.experimental.window
-    this.sourceImporter = createSourceImporter({
-      addonId: ADDON_ID,
-      windowRef: this.window,
-      invoke: (command, payload) => this.invoke(command, payload),
-      writeNote: (notePath, markdown, overwrite = false) => this.writeNote(notePath, markdown, overwrite),
-      safeStem: safeNoteStem
-    })
   }
 
   invoke(command, payload = {}) {
@@ -210,235 +141,87 @@ export default class ElephantGoogleKeepImportAddon {
     })
   }
 
-  async writeUniqueNote(note, markdown, reservedPaths) {
-    const stem = safeNoteStem(note.title || note.sourceStem)
-    for (let index = 1; index <= 10_000; index += 1) {
-      const path = candidatePath(stem, index)
-      const key = path.toLowerCase()
-      if (reservedPaths.has(key)) continue
-      try {
-        const result = await this.writeNote(path, markdown, false)
-        reservedPaths.add(key)
-        return { path, created: result?.created !== false }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        if (COLLISION_ERROR.test(message)) continue
-        throw error
-      }
-    }
-    throw new Error(`Too many notes already use the title “${note.title}”`)
-  }
-
   async importDocuments(documents, options = {}) {
     if (!Array.isArray(documents)) throw new TypeError('Google Keep import expects an array of JSON documents')
-    const reservedPaths = new Set()
+    const occupied = new Set()
     const results = []
-    const total = documents.length
-    for (let index = 0; index < documents.length; index += 1) {
-      const item = documents[index]
-      const sourceName = asString(item?.name ?? item?.sourceName)
-      options.onProgress?.({ phase: 'importing', processed: index, total, name: sourceName })
-      if (item?.error) {
-        results.push({ sourceName, error: asString(item.error) })
-        continue
-      }
+    for (const item of documents) {
       try {
+        const sourceName = asString(item?.name ?? item?.sourceName)
         const raw = item?.content ?? item?.json ?? item
         const note = parseKeepDocument(raw, sourceName)
         if (note.trashed && options.includeTrashed !== true) {
           results.push({ sourceName, skipped: true, reason: 'trashed' })
           continue
         }
-        const written = await this.writeUniqueNote(note, keepDocumentToMarkdown(note), reservedPaths)
-        results.push({ sourceName, ...written })
+        const path = createUniquePath(note, occupied)
+        const result = await this.writeNote(path, keepDocumentToMarkdown(note), false)
+        results.push({ sourceName, path, created: result?.created !== false })
       } catch (error) {
         results.push({
-          sourceName,
+          sourceName: asString(item?.name ?? item?.sourceName),
           error: error instanceof Error ? error.message : String(error)
         })
       }
     }
-    options.onProgress?.({ phase: 'importing', processed: total, total, name: '' })
     return {
-      total,
       imported: results.filter((result) => result.path).length,
       skipped: results.filter((result) => result.skipped).length,
       failed: results.filter((result) => result.error).length,
-      destination: DESTINATION,
       results
     }
   }
 
   async importFiles(files, options = {}) {
-    const documents = await readKeepImportFiles(files, options.onProgress)
+    const documents = []
+    for (const file of Array.from(files || [])) {
+      documents.push({ name: file.name, content: await file.text() })
+    }
     return this.importDocuments(documents, options)
   }
 
   render(container) {
     const documentRef = container.ownerDocument
-    const root = node(documentRef, 'section', 'en-settings-group elephant-import-settings')
-    const selectedFiles = []
-    let disposed = false
-    let running = false
-
-    const archiveInput = node(documentRef, 'input', 'elephant-import-hidden-input')
-    archiveInput.type = 'file'
-    archiveInput.accept = '.zip,.json,application/zip,application/json'
-    archiveInput.multiple = true
-    const folderInput = node(documentRef, 'input', 'elephant-import-hidden-input')
-    folderInput.type = 'file'
-    folderInput.multiple = true
-    folderInput.setAttribute('webkitdirectory', '')
-    folderInput.setAttribute('directory', '')
-
-    const keepRow = node(documentRef, 'div', 'en-settings-row')
-    const keepCopy = node(documentRef, 'div', 'en-settings-row-copy')
-    keepCopy.append(
-      node(documentRef, 'strong', '', 'Google Keep archive'),
-      node(documentRef, 'span', '', 'Convert a Google Takeout ZIP, JSON notes or an extracted Keep folder into local Markdown notes.')
+    const root = node(documentRef, 'section', 'elephant-keep-import')
+    const copy = node(documentRef, 'div', 'elephant-keep-copy')
+    copy.append(
+      node(documentRef, 'h3', '', 'Google Keep Import'),
+      node(documentRef, 'p', '', `Import Google Takeout JSON notes into ${DESTINATION}.`)
     )
-    const importButton = node(documentRef, 'button', 'en-primary-button', 'Import Google Keep')
-    importButton.type = 'button'
-    keepRow.append(keepCopy, importButton)
-
-    const keepActions = node(documentRef, 'div', 'en-settings-inline-actions elephant-import-keep-actions')
-    const folderButton = node(documentRef, 'button', '', 'Import extracted folder')
-    folderButton.type = 'button'
-    const selection = node(documentRef, 'span', 'elephant-import-selection', '')
-    keepActions.append(folderButton, selection)
-
-    const option = node(documentRef, 'label', 'elephant-import-option')
+    const input = node(documentRef, 'input')
+    input.type = 'file'
+    input.accept = 'application/json,.json'
+    input.multiple = true
+    const includeTrashedLabel = node(documentRef, 'label', 'elephant-keep-option')
     const includeTrashed = node(documentRef, 'input')
     includeTrashed.type = 'checkbox'
-    option.append(includeTrashed, node(documentRef, 'span', '', 'Include notes that were in Google Keep trash'))
-
-    const progress = node(documentRef, 'div', 'elephant-import-progress')
-    const progressBar = node(documentRef, 'span', 'elephant-import-progress-bar')
-    progress.append(progressBar)
-    const status = node(documentRef, 'div', 'elephant-import-status', '')
-    status.setAttribute('role', 'status')
-    status.setAttribute('aria-live', 'polite')
-    const resultArea = node(documentRef, 'div', 'elephant-import-results')
-
-    const updateControls = () => {
-      importButton.disabled = running
-      folderButton.disabled = running
-      includeTrashed.disabled = running
-      importButton.textContent = running ? 'Importing…' : 'Import Google Keep'
-      selection.textContent = selectedFiles.length
-        ? `${selectedFiles.length} file${selectedFiles.length === 1 ? '' : 's'} selected`
-        : ''
-    }
-
-    const setFiles = (files) => {
-      selectedFiles.splice(
-        0,
-        selectedFiles.length,
-        ...Array.from(files || []).filter((file) => ['zip', 'json'].includes(extension(fileDisplayName(file))))
-      )
-      updateControls()
-    }
-
-    const updateProgress = ({ phase, processed = 0, total = 0, name = '' }) => {
-      if (disposed) return
-      const ratio = total > 0 ? Math.min(1, processed / total) : 0
-      progressBar.style.width = `${Math.round(ratio * 100)}%`
-      status.textContent = phase === 'reading'
-        ? `Reading export ${Math.min(processed + (name ? 1 : 0), total)}/${total}${name ? ` — ${name}` : ''}`
-        : `Importing note ${Math.min(processed + (name ? 1 : 0), total)}/${total}${name ? ` — ${basename(name)}` : ''}`
-    }
-
-    const renderResult = (result) => {
-      resultArea.replaceChildren()
-      const summary = node(documentRef, 'div', 'elephant-import-summary')
-      for (const [label, value] of [['Imported', result.imported], ['Skipped', result.skipped], ['Failed', result.failed]]) {
-        const metric = node(documentRef, 'span', `elephant-import-metric elephant-import-metric-${label.toLowerCase()}`)
-        metric.append(node(documentRef, 'strong', '', String(value)), documentRef.createTextNode(` ${label.toLowerCase()}`))
-        summary.append(metric)
-      }
-      resultArea.append(summary)
-      const issues = result.results.filter((item) => item.error || item.skipped)
-      if (issues.length) {
-        const details = node(documentRef, 'details', 'elephant-import-details')
-        details.append(node(documentRef, 'summary', '', `Show ${issues.length} skipped or failed item${issues.length === 1 ? '' : 's'}`))
-        const list = node(documentRef, 'ul')
-        for (const item of issues.slice(0, 200)) {
-          list.append(node(documentRef, 'li', '', `${item.sourceName || 'Unknown file'} — ${item.error || item.reason}`))
-        }
-        details.append(list)
-        resultArea.append(details)
-      }
-    }
-
-    const runImport = async() => {
-      if (running || !selectedFiles.length) return
-      running = true
-      progressBar.style.width = '0%'
-      resultArea.replaceChildren()
-      status.textContent = 'Preparing import…'
-      updateControls()
+    includeTrashedLabel.append(includeTrashed, node(documentRef, 'span', '', 'Include trashed notes'))
+    const button = node(documentRef, 'button', '', 'Import selected files')
+    const status = node(documentRef, 'pre', 'elephant-keep-status', 'Choose one or more Google Keep JSON files.')
+    button.disabled = true
+    input.addEventListener('change', () => { button.disabled = !input.files?.length })
+    button.addEventListener('click', async() => {
+      button.disabled = true
+      status.textContent = 'Importing…'
       try {
-        const result = await this.importFiles(selectedFiles, {
-          includeTrashed: includeTrashed.checked,
-          onProgress: updateProgress
-        })
-        progressBar.style.width = '100%'
-        status.textContent = result.failed
-          ? `Imported ${result.imported} note${result.imported === 1 ? '' : 's'} with ${result.failed} failure${result.failed === 1 ? '' : 's'}.`
-          : `Imported ${result.imported} note${result.imported === 1 ? '' : 's'} into ${DESTINATION}.`
-        renderResult(result)
+        const result = await this.importFiles(input.files, { includeTrashed: includeTrashed.checked })
+        status.textContent = JSON.stringify(result, null, 2)
       } catch (error) {
-        progressBar.style.width = '0%'
         status.textContent = error instanceof Error ? error.message : String(error)
       } finally {
-        running = false
-        selectedFiles.splice(0)
-        archiveInput.value = ''
-        folderInput.value = ''
-        updateControls()
+        button.disabled = !input.files?.length
       }
-    }
-
-    importButton.onclick = () => archiveInput.click()
-    folderButton.onclick = () => folderInput.click()
-    archiveInput.onchange = () => {
-      setFiles(archiveInput.files)
-      void runImport()
-    }
-    folderInput.onchange = () => {
-      setFiles(folderInput.files)
-      void runImport()
-    }
-
-    root.append(
-      keepRow,
-      archiveInput,
-      folderInput,
-      keepActions,
-      option,
-      progress,
-      status,
-      resultArea,
-      this.sourceImporter.render(documentRef, node)
-    )
+    })
+    root.append(copy, input, includeTrashedLabel, button, status)
     container.replaceChildren(root)
-    updateControls()
-    return () => {
-      disposed = true
-      root.remove()
-    }
+    return () => root.remove()
   }
 
   async onload(api) {
     api.resources.provide(PROVIDER_RESOURCE, Object.freeze({
-      apiVersion: 1,
-      owner: ADDON_ID,
       parse: (input, sourceName = '') => parseKeepDocument(input, sourceName),
       toMarkdown: (input, sourceName = '') => keepDocumentToMarkdown(parseKeepDocument(input, sourceName)),
       importDocuments: (documents, options = {}) => this.importDocuments(documents, options),
-      importFiles: (files, options = {}) => this.importFiles(files, options),
-      importPage: (url, destination = 'Sources') => this.sourceImporter.importPage(url, destination),
-      importRss: (url, destination = 'Sources', limit = 20) => this.sourceImporter.importRss(url, destination, limit),
       destination: DESTINATION
     }))
 
@@ -449,21 +232,15 @@ export default class ElephantGoogleKeepImportAddon {
     })
 
     api.ui.registerStyle(`
-      .elephant-import-settings { display:grid; gap:14px; }
-      .elephant-import-hidden-input { display:none; }
-      .elephant-import-keep-actions { min-height:28px; }
-      .elephant-import-selection,.elephant-import-status,.elephant-source-import-status { color:var(--en-muted); font-size:13px; }
-      .elephant-import-option { display:flex; align-items:center; gap:8px; color:var(--en-muted); font-size:13px; }
-      .elephant-import-progress { height:4px; overflow:hidden; border-radius:999px; background:var(--en-soft); }
-      .elephant-import-progress-bar { display:block; width:0; height:100%; border-radius:inherit; background:var(--en-accent); transition:width .12s ease; }
-      .elephant-import-results { display:grid; gap:8px; }
-      .elephant-import-summary { display:flex; flex-wrap:wrap; gap:8px 14px; font-size:13px; }
-      .elephant-import-metric { color:var(--en-muted); }
-      .elephant-import-metric strong { color:var(--en-text); }
-      .elephant-import-details { border:1px solid var(--en-border); border-radius:9px; padding:9px 11px; }
-      .elephant-import-details summary { cursor:pointer; }
-      .elephant-import-details ul { max-height:220px; overflow:auto; margin:8px 0 0; padding-left:20px; color:var(--en-muted); font-size:12px; }
-    `, 'google-keep-import-package-v3')
+      .elephant-keep-import { display:grid; gap:14px; max-width:760px; }
+      .elephant-keep-copy h3,.elephant-keep-copy p { margin:0; }
+      .elephant-keep-copy p { margin-top:5px; color:var(--en-muted); }
+      .elephant-keep-import input[type=file] { padding:12px; border:1px dashed var(--en-border); border-radius:12px; background:var(--en-soft); color:var(--en-text); }
+      .elephant-keep-option { display:flex; align-items:center; gap:8px; color:var(--en-muted); font-size:13px; }
+      .elephant-keep-import button { justify-self:start; min-height:36px; padding:0 14px; border:1px solid var(--en-border); border-radius:9px; background:var(--en-surface); color:var(--en-text); cursor:pointer; }
+      .elephant-keep-import button:disabled { opacity:.55; cursor:default; }
+      .elephant-keep-status { min-height:80px; max-height:280px; overflow:auto; margin:0; padding:12px; border:1px solid var(--en-border); border-radius:12px; background:var(--en-soft); color:var(--en-muted); font-size:11px; white-space:pre-wrap; }
+    `, 'google-keep-import-package')
 
     api.settings.registerSection({
       id: `${ADDON_ID}.settings`,
