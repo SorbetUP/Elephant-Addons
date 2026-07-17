@@ -33,6 +33,29 @@ const normalizeError = (error, fallback = 'Sites operation failed') => (
   error instanceof Error ? error.message : String(error || fallback)
 )
 
+const pathDirectory = (value = '') => {
+  const parts = String(value || '').replaceAll('\\', '/').split('/').filter(Boolean)
+  parts.pop()
+  return parts.join('/')
+}
+
+const relativeSitePath = (fromRoute = '', targetPath = '') => {
+  const from = pathDirectory(fromRoute).split('/').filter(Boolean)
+  const target = String(targetPath || '').replaceAll('\\', '/').split('/').filter(Boolean)
+  let common = 0
+  while (common < from.length && common < target.length && from[common] === target[common]) common += 1
+  return [...Array(from.length - common)].map(() => '..').concat(target.slice(common)).join('/') || './'
+}
+
+const generatedAssetPath = (sourceDirectory, vaultPath) => {
+  const source = String(sourceDirectory || '').replaceAll('\\', '/').replace(/^\/+|\/+$/g, '')
+  const target = String(vaultPath || '').replaceAll('\\', '/').replace(/^\/+|\/+$/g, '')
+  if (target.startsWith(`${source}/`)) return joinPath('assets', 'content', target.slice(source.length + 1))
+  return joinPath('assets', 'vault', target)
+}
+
+const missingPathError = (error) => /(?:no such file|not found|cannot find|os error 2)/i.test(normalizeError(error))
+
 export default class ElephantSitesAddon {
   constructor(api) {
     this.api = api
@@ -104,12 +127,23 @@ export default class ElephantSitesAddon {
     return this.broker('notes.write', { path, content })
   }
 
-  resolveAssetUrl(vaultRootPath, vaultRelativePath) {
-    const convertFileSrc = this.tauriCore?.convertFileSrc
-    if (typeof convertFileSrc !== 'function') {
-      throw new Error('Tauri asset URL conversion is unavailable')
+  async resetGeneratedDirectory(path) {
+    try {
+      await this.invoke('tauri_vault_remove_path', { pathname: path })
+    } catch (error) {
+      if (!missingPathError(error)) throw error
     }
-    return convertFileSrc(joinNative(vaultRootPath, vaultRelativePath))
+    await this.invoke('tauri_vault_ensure_dir', { pathname: path })
+  }
+
+  async copyVaultAsset(sourcePath, destinationPath) {
+    const payload = await this.invoke('tauri_vault_read_binary', { pathname: sourcePath })
+    const dataBase64 = payload?.dataBase64
+    if (typeof dataBase64 !== 'string') throw new Error(`Cannot read site asset: ${sourcePath}`)
+    await this.invoke('tauri_vault_write_binary', {
+      pathname: destinationPath,
+      dataBase64
+    })
   }
 
   async collectNotes(sourceDirectory) {
@@ -134,19 +168,28 @@ export default class ElephantSitesAddon {
 
     try {
       await this.saveConfig()
-      const [vault, sourceInfo, notes] = await Promise.all([
-        this.allowDirectory('.'),
+      const [sourceInfo, notes] = await Promise.all([
         this.allowDirectory(source),
         this.collectNotes(source)
       ])
+      const assets = new Map()
       const plan = createSitePlan({
         sourceDirectory: source,
         notes,
-        resolveAssetUrl: (relativePath) => this.resolveAssetUrl(vault.path, relativePath)
+        resolveAssetUrl: (vaultPath, context = {}) => {
+          if (context.wiki) return '#'
+          const destination = generatedAssetPath(source, vaultPath)
+          assets.set(vaultPath, destination)
+          return relativeSitePath(context.pageRoute, destination)
+        }
       })
 
+      await this.resetGeneratedDirectory(outputDirectory)
       for (const [relativePath, content] of plan.files) {
         await this.writeGeneratedFile(joinPath(outputDirectory, relativePath), content)
+      }
+      for (const [sourcePath, relativeDestination] of assets) {
+        await this.copyVaultAsset(sourcePath, joinPath(outputDirectory, relativeDestination))
       }
 
       const generated = await this.allowDirectory(outputDirectory)
@@ -166,6 +209,7 @@ export default class ElephantSitesAddon {
         runtime: 'tauri-asset-protocol',
         mode,
         pages: plan.pages.length,
+        assets: assets.size,
         generatedAt: new Date().toISOString(),
         running: mode === 'preview'
       }
