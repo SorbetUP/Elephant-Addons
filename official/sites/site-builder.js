@@ -167,7 +167,8 @@ const inlineMarkdown = (source, resolveHref) => {
     .replace(/==([^=]+)==/g, '<mark>$1</mark>')
     .replace(/\*([^*]+)\*/g, '<em>$1</em>')
     .replace(/_([^_]+)_/g, '<em>$1</em>')
-  return value.replace(/\u0000(\d+)\u0000/g, (_match, index) => tokens[Number(index)] || '')
+  const placeholder = String.fromCharCode(0)
+  return value.replace(new RegExp(`${placeholder}(\\d+)${placeholder}`, 'g'), (_match, index) => tokens[Number(index)] || '')
 }
 
 const isTableSeparator = (line = '') => /^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line)
