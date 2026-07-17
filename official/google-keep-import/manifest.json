@@ -16,7 +16,7 @@
     "commands": true,
     "settings": true,
     "network": {
-      "hosts": ["*"]
+      "hosts": ["public-https"]
     },
     "notes": {
       "read": [],
