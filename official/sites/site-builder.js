@@ -134,7 +134,7 @@ const createHrefResolver = ({ sourceDirectory, routeMap, pagePath, resolveAssetU
       return `${result || './'}${suffix}`
     }
 
-    return `${resolveAssetUrl(vaultTarget, { pagePath, pageRoute })}${suffix}`
+    return `${resolveAssetUrl(vaultTarget, { pagePath, pageRoute, wiki })}${suffix}`
   }
 }
 
