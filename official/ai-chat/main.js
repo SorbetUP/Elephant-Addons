@@ -183,6 +183,27 @@ export default class ElephantChatAddon {
     }
   }
 
+  renderCitation(documentRef, item, index) {
+    const path = String(item?.relativePath || item?.path || '').trim()
+    const label = String(item?.title || path || item?.id || `Source ${index + 1}`).trim()
+    const citation = node(documentRef, 'button', 'elephant-chat-citation', `[${index + 1}] ${label}`)
+    citation.type = 'button'
+    citation.title = path || label
+    citation.dataset.notePath = path
+    citation.addEventListener('click', () => {
+      if (!path) return
+      this.window?.dispatchEvent?.(new CustomEvent('elephantnote:open-note', {
+        detail: {
+          path,
+          startLine: item?.startLine ?? item?.start_line ?? null,
+          endLine: item?.endLine ?? item?.end_line ?? null,
+          source: 'elephant.ai-chat'
+        }
+      }))
+    })
+    return citation
+  }
+
   renderChat(container) {
     const documentRef = container.ownerDocument
     const root = node(documentRef, 'section', 'elephant-chat-package')
@@ -205,7 +226,10 @@ export default class ElephantChatAddon {
         article.append(node(documentRef, 'strong', '', message.role === 'user' ? 'You' : 'Assistant'))
         article.append(node(documentRef, 'p', '', message.content))
         if (Array.isArray(message.citations) && message.citations.length) {
-          const citations = node(documentRef, 'small', '', message.citations.map((item) => item.title || item.path || item.id).filter(Boolean).join(' · '))
+          const citations = node(documentRef, 'small', 'elephant-chat-citations')
+          message.citations.forEach((item, index) => {
+            citations.append(this.renderCitation(documentRef, item, index), documentRef.createTextNode(' '))
+          })
           article.append(citations)
         }
         history.append(article)
@@ -313,6 +337,8 @@ export default class ElephantChatAddon {
       .elephant-chat-message.assistant { margin-right:28px; }
       .elephant-chat-message p { margin:5px 0 0; white-space:pre-wrap; }
       .elephant-chat-message small { display:block; margin-top:7px; color:var(--en-muted); }
+      .elephant-chat-citations { display:flex; flex-wrap:wrap; gap:4px; }
+      .elephant-chat-citation { border:0; padding:0; background:transparent; color:var(--en-accent,#2563eb); text-decoration:underline; cursor:pointer; font:inherit; }
       .elephant-chat-form { display:grid; gap:8px; padding:12px; border-top:1px solid var(--en-border); }
       .elephant-chat-form textarea,.elephant-chat-field input,.elephant-chat-field select { width:100%; box-sizing:border-box; padding:9px; border:1px solid var(--en-border); border-radius:9px; background:var(--en-surface); color:var(--en-text); }
       .elephant-chat-form button,.elephant-chat-actions button { min-height:34px; border:1px solid var(--en-border); border-radius:9px; background:var(--en-accent,#111827); color:white; cursor:pointer; }
