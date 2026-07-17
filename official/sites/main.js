@@ -246,20 +246,37 @@ export default class ElephantSitesAddon {
     return null
   }
 
-  stopPreview(siteId = this.site?.siteId) {
+  async stopPreview(siteId = this.site?.siteId) {
     if (!this.site || (siteId && siteId !== this.site.siteId)) return { stopped: false }
-    const stopped = this.site.siteId
+    const stopped = this.site
     this.site = null
     this.status = 'idle'
     this.error = ''
     this.renderSettingsState()
-    return { stopped: true, siteId: stopped }
+    try {
+      await this.invoke('tauri_vault_remove_path', { pathname: stopped.relativePath })
+      return { stopped: true, cleaned: true, siteId: stopped.siteId }
+    } catch (error) {
+      if (missingPathError(error)) return { stopped: true, cleaned: true, siteId: stopped.siteId }
+      this.error = `Preview closed, but its generated files could not be removed: ${normalizeError(error)}`
+      this.renderSettingsState()
+      return { stopped: true, cleaned: false, siteId: stopped.siteId, error: this.error }
+    }
   }
 
-  async openExternal(url = this.site?.url || this.lastBuild?.url) {
-    if (!url) return null
+  async openExternal(target = this.site || this.lastBuild) {
+    if (!target) return null
+    const info = typeof target === 'object'
+      ? target
+      : [this.site, this.lastBuild].find((candidate) => candidate?.url === target || candidate?.indexPath === target)
+    const openPath = this.window?.__TAURI__?.opener?.openPath
+    if (info?.indexPath && typeof openPath === 'function') {
+      await openPath(info.indexPath)
+      return { opened: true, path: info.indexPath }
+    }
+    const url = typeof target === 'string' ? target : target.url
     const openUrl = this.window?.__TAURI__?.opener?.openUrl
-    if (typeof openUrl !== 'function') throw new Error('Tauri opener API is unavailable')
+    if (!url || typeof openUrl !== 'function') throw new Error('Tauri opener API is unavailable')
     await openUrl(url)
     return { opened: true, url }
   }
@@ -349,14 +366,14 @@ export default class ElephantSitesAddon {
     const open = node(documentRef, 'button', '', 'Open externally')
     open.type = 'button'
     open.disabled = !this.site?.url
-    open.addEventListener('click', () => void this.openExternal(this.site?.url).catch((error) => {
+    open.addEventListener('click', () => void this.openExternal(this.site).catch((error) => {
       this.error = normalizeError(error)
       this.renderSettingsState()
     }))
     const close = node(documentRef, 'button', '', 'Close preview')
     close.type = 'button'
     close.disabled = !this.site
-    close.addEventListener('click', () => this.stopPreview())
+    close.addEventListener('click', () => void this.stopPreview())
     statusActions.append(open, close)
     statusHeader.append(statusCopy, statusActions)
     statusCard.append(statusHeader)
@@ -380,7 +397,7 @@ export default class ElephantSitesAddon {
     const openBuild = node(documentRef, 'button', '', 'Open build')
     openBuild.type = 'button'
     openBuild.disabled = !this.lastBuild?.url
-    openBuild.addEventListener('click', () => void this.openExternal(this.lastBuild?.url).catch(() => {}))
+    openBuild.addEventListener('click', () => void this.openExternal(this.lastBuild).catch(() => {}))
     const reveal = node(documentRef, 'button', '', 'Show files')
     reveal.type = 'button'
     reveal.disabled = !this.lastBuild?.outputPath
@@ -433,7 +450,7 @@ export default class ElephantSitesAddon {
 
   onunload() {
     this.disposed = true
-    this.stopPreview()
+    void this.stopPreview()
     this.renderRoot = null
   }
 }
