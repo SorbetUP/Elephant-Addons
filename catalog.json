@@ -2,7 +2,7 @@
   "version": 1,
   "branch": "main",
   "packageRoot": "official",
-  "updatedAt": "2026-07-15T23:58:44.414Z",
+  "updatedAt": "2026-07-17T00:00:00Z",
   "addons": [
     {
       "id": "elephant.dashboard",
@@ -118,12 +118,31 @@
       "id": "elephant.sync",
       "slug": "sync",
       "name": "Sync",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "description": "Owns persistent Iroh pairing, bidirectional vault synchronization, baselines and conflict management.",
       "author": "Elephant",
       "official": true,
       "manifestPath": "official/sync/manifest.json",
-      "entryPath": "official/sync/main.service.js"
+      "entryPath": "official/sync/main.service.js",
+      "requiresPlatformPackage": true,
+      "packages": {
+        "linux-x86_64": {
+          "path": "official/sync/releases/elephant.sync-1.2.1-linux-x86_64.enaddon",
+          "hash": "0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "macos-aarch64": {
+          "path": "official/sync/releases/elephant.sync-1.2.1-macos-aarch64.enaddon",
+          "hash": "0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "macos-x86_64": {
+          "path": "official/sync/releases/elephant.sync-1.2.1-macos-x86_64.enaddon",
+          "hash": "0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "windows-x86_64": {
+          "path": "official/sync/releases/elephant.sync-1.2.1-windows-x86_64.enaddon",
+          "hash": "0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      }
     },
     {
       "id": "elephant.calendar",
