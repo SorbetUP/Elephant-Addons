@@ -165,7 +165,9 @@ const entryLink = (element) => {
 
 export const rssToSources = (windowRef, xml, feedUrl, limit = DEFAULT_RSS_ITEMS) => {
   const documentRef = parseXml(windowRef, xml)
-  const feedTitle = firstText(documentRef.documentElement, ['title']) || new URL(feedUrl).hostname
+  const feedTitleElement = Array.from(documentRef.getElementsByTagName('*'))
+    .find((element) => localName(element) === 'title' && ['channel', 'feed'].includes(localName(element.parentElement)))
+  const feedTitle = compactText(feedTitleElement?.textContent) || new URL(feedUrl).hostname
   const entries = Array.from(documentRef.getElementsByTagName('*'))
     .filter((element) => ['item', 'entry'].includes(localName(element)))
     .slice(0, Math.min(MAX_RSS_ITEMS, Math.max(1, Number(limit) || DEFAULT_RSS_ITEMS)))
