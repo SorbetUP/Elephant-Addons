@@ -1,10 +1,10 @@
 {
   "id": "elephant.google-keep-import",
-  "name": "Google Keep Import",
-  "version": "1.3.0",
-  "description": "Imports Google Keep Takeout ZIP archives, extracted folders and JSON notes into scoped local Markdown notes.",
+  "name": "Import",
+  "version": "1.4.0",
+  "description": "Imports Google Keep Takeout ZIP archives, extracted folders, web pages and RSS or Atom feeds into scoped local Markdown notes.",
   "author": "Elephant",
-  "icon": "notebook-tabs",
+  "icon": "download",
   "apiVersion": 1,
   "minAppVersion": "0.18.9",
   "runtime": {
@@ -15,9 +15,12 @@
   "permissions": {
     "commands": true,
     "settings": true,
+    "network": {
+      "hosts": ["*"]
+    },
     "notes": {
       "read": [],
-      "write": ["Imported/Google Keep/**"]
+      "write": ["Imported/Google Keep/**", "Sources/**"]
     }
   },
   "contributes": {
