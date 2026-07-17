@@ -2,7 +2,7 @@
   "version": 1,
   "branch": "main",
   "packageRoot": "official",
-  "updatedAt": "2026-07-17T00:36:51.000Z",
+  "updatedAt": "2026-07-17T00:45:00.000Z",
   "addons": [
     {
       "id": "elephant.dashboard",
@@ -161,9 +161,9 @@
     {
       "id": "elephant.google-keep-import",
       "slug": "google-keep-import",
-      "name": "Google Keep Import",
-      "version": "1.3.0",
-      "description": "Imports Google Keep Takeout ZIP archives, extracted folders and JSON notes into scoped local Markdown notes.",
+      "name": "Import",
+      "version": "1.4.0",
+      "description": "Imports Google Keep Takeout ZIP archives, extracted folders, web pages and RSS or Atom feeds into scoped local Markdown notes.",
       "author": "Elephant",
       "official": true,
       "manifestPath": "official/google-keep-import/manifest.json",
