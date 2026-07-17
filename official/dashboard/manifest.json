@@ -1,8 +1,8 @@
 {
   "id": "elephant.dashboard",
   "name": "Dashboard",
-  "version": "1.0.0",
-  "description": "Provides the first-party vault dashboard, recent notes, workspace statistics and managed Dashboard note as a removable physical addon.",
+  "version": "1.0.1",
+  "description": "Creates a hidden editable Dashboard note for each vault and exposes it directly from the vertical icon rail.",
   "author": "Elephant",
   "icon": "dashboard",
   "apiVersion": 1,
@@ -13,12 +13,10 @@
     "mode": "trusted"
   },
   "permissions": {
-    "commands": true,
-    "views": true
+    "commands": true
   },
   "contributes": {
     "runtimeMode": "trusted",
-    "views": true,
     "commands": true
   },
   "activationEvents": ["onStartup"]

@@ -2,14 +2,14 @@
   "version": 1,
   "branch": "main",
   "packageRoot": "official",
-  "updatedAt": "2026-07-15T23:58:44.414Z",
+  "updatedAt": "2026-07-17T00:29:48Z",
   "addons": [
     {
       "id": "elephant.dashboard",
       "slug": "dashboard",
       "name": "Dashboard",
-      "version": "1.0.0",
-      "description": "Provides vault statistics, recent notes and the managed Dashboard note outside the application core.",
+      "version": "1.0.1",
+      "description": "Creates a hidden editable Dashboard note for each vault and exposes it directly from the vertical icon rail.",
       "author": "Elephant",
       "official": true,
       "manifestPath": "official/dashboard/manifest.json",
