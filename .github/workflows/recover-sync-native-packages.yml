@@ -44,7 +44,6 @@ jobs:
         shell: bash
         run: |
           python3 <<'PY'
-          from datetime import datetime, timezone
           from pathlib import Path
           import json
           import subprocess
@@ -110,7 +109,7 @@ jobs:
           item['version'] = version
           item['requiresPlatformPackage'] = True
           item['packages'] = packages
-          catalog['updatedAt'] = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+          catalog['updatedAt'] = '2026-07-17T00:00:00Z'
           catalog_path.write_text(json.dumps(catalog, indent=2) + '\n')
           PY
 
