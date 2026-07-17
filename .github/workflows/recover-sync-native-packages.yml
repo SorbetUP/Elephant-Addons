@@ -1,0 +1,159 @@
+name: Recover Sync native packages
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/recover-sync-native-packages.yml'
+      - 'official/sync/**'
+      - 'catalog.json'
+      - 'packs/**'
+
+permissions:
+  contents: write
+
+jobs:
+  recover:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'agent/fix-sync-service-package'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repair branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Check out validated legacy packages
+        uses: actions/checkout@v4
+        with:
+          repository: SorbetUP/ElephantNote
+          ref: 2a4547c17e3ce1e581e9956dc970c37039d49329
+          path: legacy
+          sparse-checkout: |
+            addons/sync/releases
+          sparse-checkout-cone-mode: false
+
+      - name: Install BLAKE3 checksum tool
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y b3sum
+
+      - name: Rebuild versioned Sync packages around validated binaries
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from datetime import datetime, timezone
+          from pathlib import Path
+          import json
+          import subprocess
+          import zipfile
+
+          root = Path.cwd()
+          sync_dir = root / 'official' / 'sync'
+          legacy_dir = root / 'legacy' / 'addons' / 'sync' / 'releases'
+          release_dir = sync_dir / 'releases'
+          release_dir.mkdir(parents=True, exist_ok=True)
+
+          manifest = json.loads((sync_dir / 'manifest.json').read_text())
+          version = manifest['version']
+          platforms = ('linux-x86_64', 'macos-aarch64', 'macos-x86_64', 'windows-x86_64')
+          packages = {}
+
+          package_files = {}
+          for path in sorted(sync_dir.rglob('*')):
+            if not path.is_file():
+              continue
+            relative = path.relative_to(sync_dir).as_posix()
+            if relative == 'addon.build.json' or relative.startswith('native/') or relative.startswith('releases/'):
+              continue
+            package_files[relative] = path.read_bytes()
+
+          for platform in platforms:
+            legacy_archive = legacy_dir / f'elephant.sync-1.2.0-{platform}.enaddon'
+            if not legacy_archive.is_file():
+              raise SystemExit(f'missing validated legacy package: {legacy_archive}')
+
+            sidecar = manifest['native']['sidecars'][platform]
+            with zipfile.ZipFile(legacy_archive) as archive:
+              try:
+                binary = archive.read(sidecar)
+              except KeyError as error:
+                raise SystemExit(f'legacy package has no {sidecar}: {legacy_archive}') from error
+
+            files = dict(package_files)
+            files[sidecar] = binary
+            output = release_dir / f'elephant.sync-{version}-{platform}.enaddon'
+            with zipfile.ZipFile(output, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+              for relative, payload in sorted(files.items()):
+                info = zipfile.ZipInfo(relative, date_time=(1980, 1, 1, 0, 0, 0))
+                info.compress_type = zipfile.ZIP_DEFLATED
+                mode = 0o100755 if relative == sidecar else 0o100644
+                info.external_attr = mode << 16
+                archive.writestr(info, payload)
+
+            digest = subprocess.check_output(['b3sum', str(output)], text=True).split()[0]
+            metadata = {
+              'id': manifest['id'],
+              'version': version,
+              'platform': platform,
+              'runner': manifest['native']['runner'],
+              'file': output.name,
+              'bytes': output.stat().st_size,
+              'blake3': digest,
+            }
+            output.with_suffix(output.suffix + '.json').write_text(json.dumps(metadata, indent=2) + '\n')
+            packages[platform] = {
+              'path': f'official/sync/releases/{output.name}',
+              'hash': digest,
+            }
+
+          catalog_path = root / 'catalog.json'
+          catalog = json.loads(catalog_path.read_text())
+          item = next(addon for addon in catalog['addons'] if addon['id'] == 'elephant.sync')
+          item['version'] = version
+          item['requiresPlatformPackage'] = True
+          item['packages'] = packages
+          catalog['updatedAt'] = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+          catalog_path.write_text(json.dumps(catalog, indent=2) + '\n')
+          PY
+
+      - name: Validate generated packages and repository contracts
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          import zipfile
+
+          catalog = json.loads(Path('catalog.json').read_text())
+          sync = next(addon for addon in catalog['addons'] if addon['id'] == 'elephant.sync')
+          assert sync['version'] == '1.2.1'
+          assert sync['requiresPlatformPackage'] is True
+          assert set(sync['packages']) == {'linux-x86_64', 'macos-aarch64', 'macos-x86_64', 'windows-x86_64'}
+          for platform, package in sync['packages'].items():
+            path = Path(package['path'])
+            assert path.is_file(), path
+            assert len(package['hash']) == 64
+            with zipfile.ZipFile(path) as archive:
+              manifest = json.loads(archive.read('manifest.json'))
+              assert manifest['id'] == 'elephant.sync'
+              assert manifest['version'] == '1.2.1'
+              assert manifest['native']['sidecars'][platform] in archive.namelist()
+          PY
+          node scripts/validate-repository.mjs
+
+      - name: Commit generated packages to the repair branch
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add catalog.json
+          git add -f official/sync/releases
+          if git diff --cached --quiet; then
+            echo 'Generated packages are already current.'
+            exit 0
+          fi
+          git commit -m 'build(sync): publish repaired native packages'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
