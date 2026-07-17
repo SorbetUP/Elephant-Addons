@@ -30,7 +30,7 @@
       "id": "elephant.ai-chat",
       "slug": "ai-chat",
       "name": "Chat",
-      "version": "1.1.0",
+      "version": "2.0.0",
       "description": "Adds the AI chat sidebar and chat route settings.",
       "author": "Elephant",
       "official": true,
