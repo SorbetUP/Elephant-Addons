@@ -1,0 +1,128 @@
+name: Repair Sync packages on PR
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'official/sync/**'
+      - 'catalog.json'
+      - 'packs/**'
+      - '.github/workflows/recover-sync-native-packages.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'agent/fix-sync-service-package'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - uses: actions/checkout@v4
+        with:
+          repository: SorbetUP/ElephantNote
+          ref: 2a4547c17e3ce1e581e9956dc970c37039d49329
+          path: legacy
+          sparse-checkout: |
+            addons/sync/releases
+          sparse-checkout-cone-mode: false
+
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y b3sum
+
+      - name: Rebuild and validate all Sync platform packages
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import json
+          import subprocess
+          import zipfile
+
+          root = Path.cwd()
+          sync_dir = root / 'official' / 'sync'
+          legacy_dir = root / 'legacy' / 'addons' / 'sync' / 'releases'
+          release_dir = sync_dir / 'releases'
+          release_dir.mkdir(parents=True, exist_ok=True)
+          manifest = json.loads((sync_dir / 'manifest.json').read_text())
+          version = manifest['version']
+          platforms = ('linux-x86_64', 'macos-aarch64', 'macos-x86_64', 'windows-x86_64')
+          package_files = {}
+          for path in sorted(sync_dir.rglob('*')):
+            if not path.is_file():
+              continue
+            relative = path.relative_to(sync_dir).as_posix()
+            if relative == 'addon.build.json' or relative.startswith('native/') or relative.startswith('releases/'):
+              continue
+            package_files[relative] = path.read_bytes()
+
+          packages = {}
+          for platform in platforms:
+            legacy_archive = legacy_dir / f'elephant.sync-1.2.0-{platform}.enaddon'
+            sidecar = manifest['native']['sidecars'][platform]
+            with zipfile.ZipFile(legacy_archive) as archive:
+              binary = archive.read(sidecar)
+            files = dict(package_files)
+            files[sidecar] = binary
+            output = release_dir / f'elephant.sync-{version}-{platform}.enaddon'
+            with zipfile.ZipFile(output, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+              for relative, payload in sorted(files.items()):
+                info = zipfile.ZipInfo(relative, date_time=(1980, 1, 1, 0, 0, 0))
+                info.compress_type = zipfile.ZIP_DEFLATED
+                info.external_attr = (0o100755 if relative == sidecar else 0o100644) << 16
+                archive.writestr(info, payload)
+            digest = subprocess.check_output(['b3sum', str(output)], text=True).split()[0]
+            output.with_suffix(output.suffix + '.json').write_text(json.dumps({
+              'id': manifest['id'],
+              'version': version,
+              'platform': platform,
+              'runner': manifest['native']['runner'],
+              'file': output.name,
+              'bytes': output.stat().st_size,
+              'blake3': digest,
+            }, indent=2) + '\n')
+            packages[platform] = {
+              'path': f'official/sync/releases/{output.name}',
+              'hash': digest,
+            }
+
+          catalog_path = root / 'catalog.json'
+          catalog = json.loads(catalog_path.read_text())
+          sync = next(addon for addon in catalog['addons'] if addon['id'] == 'elephant.sync')
+          sync['version'] = version
+          sync['requiresPlatformPackage'] = True
+          sync['packages'] = packages
+          catalog['updatedAt'] = '2026-07-17T00:00:00Z'
+          catalog_path.write_text(json.dumps(catalog, indent=2) + '\n')
+
+          for platform, package in packages.items():
+            path = root / package['path']
+            assert path.is_file()
+            assert subprocess.check_output(['b3sum', str(path)], text=True).split()[0] == package['hash']
+            with zipfile.ZipFile(path) as archive:
+              packaged_manifest = json.loads(archive.read('manifest.json'))
+              assert packaged_manifest['version'] == version
+              assert manifest['native']['sidecars'][platform] in archive.namelist()
+          PY
+          node scripts/validate-repository.mjs
+
+      - name: Publish generated archives on the PR branch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add catalog.json
+          git add -f official/sync/releases
+          if git diff --cached --quiet; then
+            echo 'Packages already validated.'
+            exit 0
+          fi
+          git commit -m 'build(sync): publish repaired native packages'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
