@@ -2,7 +2,7 @@
   "version": 1,
   "branch": "main",
   "packageRoot": "official",
-  "updatedAt": "2026-07-17T01:30:00Z",
+  "updatedAt": "2026-07-17T00:45:00.000Z",
   "addons": [
     {
       "id": "elephant.dashboard",
@@ -140,8 +140,8 @@
       "id": "elephant.sites",
       "slug": "sites",
       "name": "Sites",
-      "version": "1.4.0",
-      "description": "Generates, previews and builds navigable static sites from Markdown folders in the active vault.",
+      "version": "1.3.0",
+      "description": "Previews static sites from permission-scoped vault directories on desktop, Android and iOS.",
       "author": "Elephant",
       "official": true,
       "manifestPath": "official/sites/manifest.json",
@@ -161,9 +161,9 @@
     {
       "id": "elephant.google-keep-import",
       "slug": "google-keep-import",
-      "name": "Google Keep Import",
-      "version": "1.2.0",
-      "description": "Imports Google Keep Takeout JSON files into scoped local Markdown notes.",
+      "name": "Import",
+      "version": "1.4.0",
+      "description": "Imports Google Keep Takeout ZIP archives, extracted folders, web pages and RSS or Atom feeds into scoped local Markdown notes.",
       "author": "Elephant",
       "official": true,
       "manifestPath": "official/google-keep-import/manifest.json",
