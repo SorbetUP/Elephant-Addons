@@ -24,10 +24,10 @@ const DEFAULT_ROUTE = Object.freeze({
 })
 
 const QUICK_PROMPTS = Object.freeze([
-  ['Synthèse du vault', 'Résume les sujets importants du vault et cite les notes utilisées.'],
-  ['Relier les idées', 'Trouve les liens importants entre mes notes et explique les relations.'],
-  ['Travail à poursuivre', 'Repère les décisions, tâches, questions ouvertes et prochaines actions.'],
-  ['Organiser le Wiki', 'Propose les sujets de Wiki les plus utiles à créer ou mettre à jour.']
+  { label: 'Synthèse du vault', hint: 'Résume les sujets importants du vault', icon: 'graph', prompt: 'Résume les sujets importants du vault et cite les notes utilisées.' },
+  { label: 'Relier les idées', hint: 'Trouve les liens entre mes notes', icon: 'link', prompt: 'Trouve les liens importants entre mes notes et explique les relations.' },
+  { label: 'Travail à poursuivre', hint: 'Repère les prochaines actions', icon: 'doc', prompt: 'Repère les décisions, tâches, questions ouvertes et prochaines actions.' },
+  { label: 'Organiser le Wiki', hint: 'Propose les sujets utiles', icon: 'source', prompt: 'Propose les sujets de Wiki les plus utiles à créer ou mettre à jour.' }
 ])
 
 const clone = (value) => JSON.parse(JSON.stringify(value ?? {}))
@@ -481,30 +481,30 @@ export default class ElephantChatAddon {
   }
 
   renderMessage(documentRef, conversation, message) {
-    const article = node(documentRef, 'article', `elephant-chat-message ${message.role}`)
-    const header = node(documentRef, 'header', 'elephant-chat-message-head')
+    const article = node(documentRef, 'article', `en-chat-message elephant-chat-message ${message.role}`)
+    const header = node(documentRef, 'header', 'en-chat-message-head elephant-chat-message-head')
     header.append(
       node(documentRef, 'strong', '', message.role === 'user' ? 'Vous' : 'Elephant'),
       node(documentRef, 'small', '', [message.phase, message.model, message.reasoningEffort ? `réflexion ${message.reasoningEffort}` : ''].filter(Boolean).join(' · '))
     )
     article.append(header)
-    const body = node(documentRef, 'div', 'elephant-chat-message-body')
+    const body = node(documentRef, 'div', 'en-chat-message-body elephant-chat-message-body')
     body.textContent = message.content || (message.streaming ? 'Recherche et raisonnement…' : '')
     article.append(body)
 
     if (message.toolCalls.length) {
-      const tools = node(documentRef, 'div', 'elephant-chat-tools')
+      const tools = node(documentRef, 'div', 'en-chat-tools elephant-chat-tools')
       for (const tool of message.toolCalls) {
-        const pill = node(documentRef, 'span', 'elephant-chat-tool', `${tool.label || tool.name}${tool.summary ? ` · ${tool.summary}` : ''}`)
+        const pill = node(documentRef, 'span', 'en-chat-tool elephant-chat-tool', `${tool.label || tool.name}${tool.summary ? ` · ${tool.summary}` : ''}`)
         tools.append(pill)
       }
       article.append(tools)
     }
 
     if (message.citations.length) {
-      const citations = node(documentRef, 'div', 'elephant-chat-citations')
+      const citations = node(documentRef, 'div', 'en-chat-citations elephant-chat-citations')
       message.citations.forEach((citation, index) => {
-        const button = node(documentRef, 'button', 'elephant-chat-citation', `${index + 1}  ${citationTitle(citation)}`)
+        const button = node(documentRef, 'button', 'en-chat-citation elephant-chat-citation', `${index + 1}  ${citationTitle(citation)}`)
         button.type = 'button'
         button.title = citationPath(citation)
         button.setAttribute('aria-label', `Ouvrir la source ${citationTitle(citation)}`)
@@ -515,7 +515,7 @@ export default class ElephantChatAddon {
     }
 
     if (message.actions.length) {
-      const actions = node(documentRef, 'section', 'elephant-chat-action-list')
+      const actions = node(documentRef, 'section', 'en-chat-tools elephant-chat-action-list')
       for (const entry of message.actions) {
         const card = node(documentRef, 'article', 'elephant-chat-action')
         const proposal = entry?.proposal || {}
@@ -552,8 +552,9 @@ export default class ElephantChatAddon {
     await this.config().catch(() => ({}))
     let disposed = false
     let preserveScroll = false
+    let historyOpen = false
 
-    const root = node(documentRef, 'section', 'elephant-chat-package')
+      const root = node(documentRef, 'section', 'en-chat elephant-chat-package')
     container.replaceChildren(root)
 
     const render = (options = {}) => {
@@ -565,33 +566,66 @@ export default class ElephantChatAddon {
       const route = this.route()
       root.replaceChildren()
 
-      const topbar = node(documentRef, 'header', 'elephant-chat-topbar')
-      const conversationSelect = node(documentRef, 'select', 'elephant-chat-conversation-select')
-      for (const item of vaultState.conversations) {
-        const option = node(documentRef, 'option', '', item.title)
-        option.value = item.id
-        option.selected = item.id === conversation.id
-        conversationSelect.append(option)
-      }
-      conversationSelect.onchange = () => this.selectConversation(conversationSelect.value)
-      const newButton = node(documentRef, 'button', '', '+ Nouvelle')
-      newButton.type = 'button'; newButton.onclick = () => this.startConversation()
-      const deleteButton = node(documentRef, 'button', '', 'Supprimer')
-      deleteButton.type = 'button'; deleteButton.onclick = () => this.deleteConversation(conversation.id)
+      const topbar = node(documentRef, 'header', 'en-chat-topbar elephant-chat-topbar')
+      const historyToggle = node(documentRef, 'button', 'en-icon-btn elephant-chat-icon-button', '☰')
+      historyToggle.type = 'button'
+      historyToggle.title = 'Historique des conversations'
+      historyToggle.setAttribute('aria-label', 'Ouvrir l’historique des conversations')
+      historyToggle.onclick = () => { historyOpen = !historyOpen; render({ keepScroll: true }) }
       const status = node(documentRef, 'span', 'elephant-chat-route-status', [route.source !== 'disabled' ? route.source : 'IA désactivée', route.model].filter(Boolean).join(' · '))
-      topbar.append(conversationSelect, newButton, deleteButton, status)
+      const title = node(documentRef, 'div', 'en-chat-topbar-title elephant-chat-topbar-title')
+      title.append(node(documentRef, 'h2', '', conversation.title || 'Nouvelle conversation'))
+      if (this.activeStream) title.append(node(documentRef, 'small', '', 'Recherche et génération en cours…'))
+      const closeButton = node(documentRef, 'button', 'en-icon-btn elephant-chat-icon-button', '×')
+      closeButton.type = 'button'
+      closeButton.title = 'Fermer le chat'
+      closeButton.onclick = () => { this.getVaultStore()?.closeChatSidebar?.() }
+      const actions = node(documentRef, 'div', 'en-chat-topbar-actions elephant-chat-topbar-actions')
+      actions.append(status, closeButton)
+      topbar.append(historyToggle, title, actions)
 
-      const history = node(documentRef, 'div', 'elephant-chat-history')
+      const backdrop = node(documentRef, 'div', 'en-chat-backdrop')
+      backdrop.hidden = !historyOpen
+      backdrop.onclick = () => { historyOpen = false; render({ keepScroll: true }) }
+      const conversationHistory = node(documentRef, 'aside', `en-chat-history elephant-chat-conversation-history${historyOpen ? ' is-open' : ''}`)
+      conversationHistory.setAttribute('aria-label', 'Historique des conversations')
+      const historyHead = node(documentRef, 'header', 'en-chat-history-head')
+      const historyClose = node(documentRef, 'button', 'en-icon-btn', '×')
+      historyClose.type = 'button'; historyClose.onclick = () => { historyOpen = false; render({ keepScroll: true }) }
+      historyHead.append(historyClose)
+      const historyActions = node(documentRef, 'div', 'en-chat-history-actions')
+      const newButton = node(documentRef, 'button', 'en-chat-history-row en-chat-history-row-primary', '+  Nouvelle conversation')
+      newButton.type = 'button'; newButton.onclick = () => { this.startConversation(); historyOpen = false }
+      historyActions.append(newButton)
+      const historySearch = node(documentRef, 'input', 'en-chat-history-search-input')
+      historySearch.type = 'search'; historySearch.placeholder = 'Rechercher une conversation'; historySearch.spellcheck = false
+      const historySearchWrap = node(documentRef, 'div', 'en-chat-history-search'); historySearchWrap.append(historySearch)
+      const historyList = node(documentRef, 'div', 'en-chat-history-scroll')
+      for (const item of vaultState.conversations) {
+        const row = node(documentRef, 'button', `en-chat-history-row en-chat-history-conversation${item.id === conversation.id ? ' active' : ''}`, item.title)
+        row.type = 'button'
+        row.onclick = () => { this.selectConversation(item.id); historyOpen = false }
+        historyList.append(row)
+      }
+      conversationHistory.append(historyHead, historyActions, historySearchWrap, historyList)
+
+      const history = node(documentRef, 'div', 'en-chat-scroll elephant-chat-history')
       if (!conversation.messages.length) {
-        const empty = node(documentRef, 'section', 'elephant-chat-empty')
-        empty.append(node(documentRef, 'h3', '', 'Interrogez votre vault, pas un chatbot vide.'), node(documentRef, 'p', '', 'Recherche sémantique, Wiki, citations, modèles locaux et abonnement ChatGPT sont composés par les addons installés.'))
-        const prompts = node(documentRef, 'div', 'elephant-chat-quick-prompts')
-        for (const [label, prompt] of QUICK_PROMPTS) {
-          const button = node(documentRef, 'button', '', label)
+        const empty = node(documentRef, 'section', 'en-chat-empty elephant-chat-empty')
+        const emptyHead = node(documentRef, 'div', 'en-chat-empty-head')
+        emptyHead.append(node(documentRef, 'h1', '', 'Ask'), node(documentRef, 'p', '', 'Grounded answers from the active vault and semantic graph.'))
+        empty.append(emptyHead)
+        const prompts = node(documentRef, 'div', 'en-chat-quick elephant-chat-quick-prompts')
+        for (const prompt of QUICK_PROMPTS) {
+          const button = node(documentRef, 'button', 'en-chat-quick-row')
           button.type = 'button'
+          const icon = node(documentRef, 'span', 'en-chat-quick-icon', prompt.icon === 'graph' ? '✦' : prompt.icon === 'link' ? '↗' : prompt.icon === 'doc' ? '▤' : '◈')
+          const copy = node(documentRef, 'span', 'en-chat-quick-text')
+          copy.append(node(documentRef, 'strong', '', prompt.label), node(documentRef, 'small', '', prompt.hint))
+          button.append(icon, copy)
           button.onclick = () => {
             const textarea = root.querySelector('textarea')
-            if (textarea) { textarea.value = prompt; textarea.focus() }
+            if (textarea) { textarea.value = prompt.prompt; textarea.focus() }
           }
           prompts.append(button)
         }
@@ -600,17 +634,21 @@ export default class ElephantChatAddon {
       }
       for (const message of conversation.messages) history.append(this.renderMessage(documentRef, conversation, message))
 
-      const form = node(documentRef, 'form', 'elephant-chat-form')
-      const textarea = node(documentRef, 'textarea')
-      textarea.rows = 2
-      textarea.placeholder = 'Demandez, recherchez, organisez ou modifiez vos notes…'
-      const controls = node(documentRef, 'div', 'elephant-chat-form-controls')
-      const send = node(documentRef, 'button', '', this.activeStream ? 'En cours…' : 'Envoyer')
+      const form = node(documentRef, 'form', 'en-chat-composer elephant-chat-form')
+      const capsule = node(documentRef, 'div', 'en-chat-composer-capsule')
+      const textarea = node(documentRef, 'textarea', 'en-chat-composer-input')
+      textarea.rows = 1
+      textarea.placeholder = 'Ask'
+      const controls = node(documentRef, 'div', 'en-chat-composer-controls elephant-chat-form-controls')
+      const mode = node(documentRef, 'button', 'en-chat-composer-mode', 'Advanced ▾')
+      mode.type = 'button'
+      const send = node(documentRef, 'button', 'en-chat-composer-send', '↑')
       send.type = 'submit'; send.disabled = Boolean(this.activeStream)
       const stop = node(documentRef, 'button', 'secondary', 'Arrêter')
       stop.type = 'button'; stop.hidden = !this.activeStream; stop.onclick = () => this.stopGeneration()
-      controls.append(stop, send)
-      form.append(textarea, controls)
+      controls.append(mode, stop, send)
+      capsule.append(textarea, controls)
+      form.append(capsule)
       form.addEventListener('submit', async (event) => {
         event.preventDefault()
         const question = textarea.value.trim()
@@ -651,7 +689,7 @@ export default class ElephantChatAddon {
         }
       })
 
-      root.append(topbar, history, form)
+      root.append(backdrop, conversationHistory, topbar, history, form)
       history.scrollTop = preserveScroll ? previousScroll : history.scrollHeight
     }
 
@@ -768,19 +806,742 @@ export default class ElephantChatAddon {
   async onload(api) {
     await this.loadState()
     api.ui.registerStyle(`
-      .elephant-chat-package{height:100%;min-width:340px;display:grid;grid-template-rows:auto minmax(0,1fr) auto;border-left:1px solid var(--en-border);background:var(--en-bg);color:var(--en-text)}
-      .elephant-chat-topbar{display:flex;align-items:center;gap:8px;padding:10px;border-bottom:1px solid var(--en-border)}
+      .elephant-chat-package{position:relative;height:100%;min-width:340px;display:grid;grid-template-rows:auto minmax(0,1fr) auto;border-left:1px solid var(--en-border);background:var(--en-bg);color:var(--en-text);overflow:hidden;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+      .elephant-chat-topbar{display:flex;align-items:center;gap:10px;padding:14px 18px 10px;border-bottom:1px solid var(--en-border);background:var(--en-bg)}
+      .elephant-chat-icon-button{width:34px!important;min-width:34px!important;padding:0!important;border:0!important;border-radius:10px!important;background:transparent!important;color:var(--en-text)!important;font-size:18px;cursor:pointer}.elephant-chat-icon-button:hover{background:var(--en-soft)!important}
+      .elephant-chat-topbar-title{flex:1;min-width:0}.elephant-chat-topbar-title h2{margin:0;color:var(--en-text);font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.elephant-chat-topbar-title small{display:block;margin-top:2px;color:var(--en-muted);font-size:11px}.elephant-chat-topbar-actions{display:flex;align-items:center;gap:8px}
       .elephant-chat-topbar select,.elephant-chat-topbar button,.elephant-chat-form button,.elephant-chat-citation,.elephant-chat-action button,.elephant-chat-quick-prompts button{min-height:32px;border:1px solid var(--en-border);border-radius:9px;background:var(--en-surface);color:var(--en-text);padding:0 10px;cursor:pointer}
       .elephant-chat-conversation-select{min-width:0;max-width:190px}.elephant-chat-route-status{margin-left:auto;color:var(--en-muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-      .elephant-chat-history{overflow:auto;padding:16px;display:grid;align-content:start;gap:12px}.elephant-chat-empty{max-width:520px;margin:auto;display:grid;gap:14px;text-align:center;color:var(--en-muted)}
+      .elephant-chat-history{overflow:auto;padding:24px 22px 20px;display:grid;align-content:start;gap:12px}.elephant-chat-empty{max-width:520px;margin:10vh auto 0;display:grid;gap:14px;text-align:center;color:var(--en-muted)}
       .elephant-chat-empty h3{margin:0;color:var(--en-text)}.elephant-chat-empty p{margin:0}.elephant-chat-quick-prompts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+      .elephant-chat-conversation-history{position:absolute;z-index:5;top:0;bottom:0;left:0;width:min(260px,80%);padding:18px 14px;background:var(--en-bg);border-right:1px solid var(--en-border);transform:translateX(-100%);transition:transform .2s ease;display:flex;flex-direction:column;gap:14px}.elephant-chat-conversation-history.is-open{transform:translateX(0)}.elephant-chat-conversation-list{display:grid;gap:4px;overflow:auto}.elephant-chat-conversation-row{border:0!important;background:transparent!important;color:var(--en-text)!important;text-align:left!important;border-radius:10px!important;padding:10px!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.elephant-chat-conversation-row:hover,.elephant-chat-conversation-row.active{background:var(--en-soft)!important}
       .elephant-chat-message{display:grid;gap:8px;padding:12px;border:1px solid var(--en-border);border-radius:14px;background:var(--en-surface)}.elephant-chat-message.user{margin-left:36px;background:var(--en-soft)}.elephant-chat-message.assistant{margin-right:20px}
       .elephant-chat-message-head{display:flex;justify-content:space-between;gap:8px}.elephant-chat-message-head small{color:var(--en-muted)}.elephant-chat-message-body{white-space:pre-wrap;line-height:1.55}
       .elephant-chat-tools,.elephant-chat-citations{display:flex;flex-wrap:wrap;gap:6px}.elephant-chat-tool{padding:5px 8px;border-radius:999px;background:var(--en-soft);color:var(--en-muted);font-size:11px}.elephant-chat-citation{text-align:left}
       .elephant-chat-action-list{display:grid;gap:8px}.elephant-chat-action{display:flex;justify-content:space-between;gap:10px;padding:10px;border:1px solid var(--en-border);border-radius:10px}.elephant-chat-action p{margin:4px 0 0;color:var(--en-muted)}.elephant-chat-action-controls{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.elephant-chat-error{color:var(--en-danger,#b42318)}
       .elephant-chat-form{display:grid;gap:8px;padding:12px;border-top:1px solid var(--en-border)}.elephant-chat-form textarea,.elephant-chat-field input,.elephant-chat-field select,.elephant-chat-field textarea{width:100%;box-sizing:border-box;padding:9px;border:1px solid var(--en-border);border-radius:9px;background:var(--en-surface);color:var(--en-text)}.elephant-chat-form-controls{display:flex;justify-content:flex-end;gap:8px}.elephant-chat-form button:not(.secondary){background:var(--en-accent,var(--en-primary,#111827));color:white}
       .elephant-chat-settings{display:grid;gap:11px}.elephant-chat-settings h4,.elephant-chat-settings p{margin:0}.elephant-chat-field{display:grid;gap:5px;color:var(--en-muted);font-size:11px}.elephant-chat-field small{font-size:10px}.elephant-chat-feedback{color:var(--en-muted)}
+      .en-chat{position:relative;min-width:0;min-height:0;height:100%;display:grid;grid-template-rows:auto minmax(0,1fr) auto;background:var(--en-bg);color:var(--en-text);overflow:hidden;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.en-chat *{box-sizing:border-box}.en-chat-backdrop{position:absolute;z-index:4;inset:0;background:color-mix(in srgb,var(--en-bg) 60%,transparent)}.en-chat-history{position:absolute!important;z-index:5;top:0;bottom:0;left:0;width:min(260px,80%);padding:0 14px 14px!important;background:var(--en-bg);border-right:1px solid var(--en-border);transform:translateX(-100%);transition:transform .22s ease;display:flex!important;flex-direction:column!important;gap:0!important;overflow:hidden!important}.en-chat-history.is-open{transform:translateX(0)}.en-chat-history-head{display:flex;justify-content:flex-end;padding:18px 4px 10px}.en-chat-history-actions{display:grid;gap:4px;padding:4px 0 10px}.en-chat-history-search{padding:0 0 12px}.en-chat-history-search-input{width:100%;height:36px;padding:0 12px;border:1px solid var(--en-border);border-radius:10px;background:var(--en-surface);color:var(--en-text)}.en-chat-history-scroll{flex:1;min-height:0;overflow:auto;padding:4px 0 14px!important;display:grid;align-content:start;gap:4px}.en-chat-history-row{display:flex;align-items:center;width:100%;padding:10px;border:0;border-radius:10px;color:var(--en-text);background:transparent;text-align:left;cursor:pointer}.en-chat-history-row:hover,.en-chat-history-row.active{background:var(--en-soft)}.en-chat-history-row-primary{background:var(--en-surface);font-weight:500}.en-chat-scroll{min-height:0;overflow-y:auto;padding:10px 0 20px;scroll-behavior:smooth}.en-chat-empty{display:flex;flex-direction:column;gap:26px;padding:10vh 22px 20px;color:var(--en-text)}.en-chat-empty-head h1{margin:0 0 8px;font-size:22px;font-weight:600}.en-chat-empty-head p{margin:0;color:var(--en-muted);font-size:13px}.en-chat-quick{display:flex;flex-direction:column;gap:6px}.en-chat-quick-row{display:flex;align-items:center;padding:10px 12px!important;border:0!important;border-radius:12px!important;color:var(--en-text)!important;background:transparent!important;text-align:left;cursor:pointer}.en-chat-quick-row:hover{background:var(--en-soft)!important}.en-chat-composer{padding:12px!important;border-top:1px solid var(--en-border);background:var(--en-bg)}
       @media(max-width:700px){.elephant-chat-package{min-width:0}.elephant-chat-topbar{flex-wrap:wrap}.elephant-chat-route-status{width:100%;margin-left:0}.elephant-chat-message.user{margin-left:14px}.elephant-chat-message.assistant{margin-right:8px}.elephant-chat-quick-prompts{grid-template-columns:1fr}}
++.en-chat {
+  position: relative;
+  min-height: 0;
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  background: var(--en-bg);
+  color: var(--en-text);
+  overflow: hidden;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
+  --chat-surface: color-mix(in srgb, var(--en-surface) 96%, var(--en-bg));
+  --chat-surface-hover: var(--en-soft);
+  --chat-surface-active: color-mix(in srgb, var(--en-soft) 80%, var(--en-border));
+  --chat-border: var(--en-border);
+  --chat-text: var(--en-text);
+  --chat-text-secondary: var(--en-muted);
+  --chat-text-muted: color-mix(in srgb, var(--en-muted) 80%, transparent);
+  --chat-accent: var(--en-primary);
+  --chat-accent-hover: color-mix(in srgb, var(--en-primary) 82%, white);
+}
+
+.en-chat * {
+  box-sizing: border-box;
+}
+
+.en-chat-backdrop {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--en-bg) 60%, transparent);
+  z-index: 30;
+  border: 0;
+  padding: 0;
+}
+
+.en-chat-history {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: min(260px, 80%);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  background: var(--en-bg);
+  border-right: 1px solid var(--en-border);
+  transform: translateX(-100%);
+  transition: transform 0.22s ease;
+}
+
+.en-chat-history.is-open {
+  transform: translateX(0);
+}
+
+.en-chat-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 18px 18px 10px;
+}
+
+.en-chat-history-actions {
+  display: grid;
+  gap: 4px;
+  padding: 4px 14px 10px;
+}
+
+.en-chat-history-search {
+  padding: 0 14px 12px;
+}
+
+.en-chat-history-search input {
+  width: 100%;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--en-border);
+  border-radius: 10px;
+  background: var(--en-surface);
+  color: var(--en-text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.en-chat-history-search input::placeholder {
+  color: var(--chat-text-muted);
+}
+
+.en-chat-history-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 14px 14px;
+}
+
+.en-chat-history-empty {
+  margin: 20px 6px;
+  color: var(--chat-text-muted);
+  font-size: 13px;
+}
+
+.en-chat-history-group + .en-chat-history-group {
+  margin-top: 16px;
+}
+
+.en-chat-history-group-title {
+  margin: 0 6px 6px;
+  color: var(--chat-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.en-chat-history-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 10px;
+  border-radius: 10px;
+  color: var(--en-text);
+  background: transparent;
+  border: 0;
+  text-align: left;
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.en-chat-history-row:hover {
+  background: var(--en-soft);
+}
+
+.en-chat-history-row.active {
+  background: var(--chat-surface);
+}
+
+.en-chat-history-row-primary {
+  background: var(--chat-surface);
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+.en-chat-history-conversation-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.en-chat-history-conversation-actions {
+  display: none;
+  gap: 4px;
+}
+
+.en-chat-history-conversation:hover .en-chat-history-conversation-actions,
+.en-chat-history-conversation.active .en-chat-history-conversation-actions {
+  display: inline-flex;
+}
+
+.en-chat-main {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  background: var(--en-bg);
+}
+
+.en-chat-topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px 10px;
+  background: var(--en-bg);
+}
+
+.en-chat-topbar-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.en-chat-topbar-title h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--en-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.en-chat-topbar-title small {
+  display: block;
+  margin-top: 2px;
+  color: var(--en-muted);
+  font-size: 11px;
+}
+
+.en-chat-topbar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.en-chat-status {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--en-primary);
+}
+
+.en-chat-status-pulse {
+  animation: en-chat-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes en-chat-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+}
+
+.en-icon-btn {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 10px;
+  color: var(--en-text);
+  background: transparent;
+  cursor: pointer;
+}
+
+.en-icon-btn:hover {
+  background: var(--en-soft);
+}
+
+.en-icon-btn-ghost {
+  width: 26px;
+  height: 26px;
+  color: var(--en-muted);
+  background: transparent;
+}
+
+.en-icon-btn-ghost:hover {
+  color: var(--en-text);
+  background: var(--en-soft);
+}
+
+.en-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+.en-chat-history-row .en-icon {
+  color: var(--en-muted);
+}
+
+.en-chat-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px 0 20px;
+  scroll-behavior: smooth;
+}
+
+.en-chat-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  padding: 10vh 22px 20px;
+  color: var(--en-text);
+}
+
+.en-chat-empty-head h1 {
+  margin: 0 0 8px;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.en-chat-empty-head p {
+  margin: 0;
+  color: var(--en-muted);
+  font-size: 13px;
+}
+
+.en-chat-quick {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.en-chat-quick-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 12px;
+  color: var(--en-text);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.en-chat-quick-row:hover {
+  background: var(--en-soft);
+}
+
+.en-chat-quick-icon {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: var(--chat-surface);
+  color: var(--en-text);
+}
+
+.en-chat-quick-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.en-chat-quick-text strong {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.en-chat-quick-text small {
+  color: var(--en-muted);
+  font-size: 11px;
+}
+
+.en-chat-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 6px 18px 20px;
+}
+
+.en-chat-message {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--chat-surface);
+  color: var(--en-text);
+}
+
+.en-chat-message.user {
+  align-self: flex-end;
+  max-width: min(680px, 92%);
+  background: color-mix(in srgb, var(--en-primary) 18%, var(--chat-surface));
+}
+
+.en-chat-message.assistant {
+  align-self: stretch;
+}
+
+.en-chat-message-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.en-chat-message-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--chat-surface-active);
+  color: var(--en-text);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.en-chat-message-avatar[data-role='user'] {
+  background: var(--en-primary);
+  color: #ffffff;
+}
+
+.en-chat-message-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.en-chat-message-meta strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.en-chat-message-meta small {
+  color: var(--en-muted);
+  font-size: 11px;
+}
+
+.en-chat-message-body {
+  color: var(--en-text);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.en-chat-message-body p {
+  margin: 0 0 8px;
+}
+
+.en-chat-message-body p:last-child {
+  margin-bottom: 0;
+}
+
+.en-chat-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.en-chat-tool {
+  border: 0;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--en-bg) 55%, transparent);
+  color: var(--en-text);
+  text-align: left;
+  padding: 0;
+  cursor: pointer;
+}
+
+.en-chat-tool:hover {
+  background: color-mix(in srgb, var(--en-bg) 35%, transparent);
+}
+
+.en-chat-tool-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 11px;
+}
+
+.en-chat-tool-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--en-muted);
+  flex: 0 0 auto;
+}
+
+.en-chat-tool-status[data-status='running'] {
+  background: var(--en-primary);
+  animation: en-chat-pulse 1.1s ease-in-out infinite;
+}
+
+.en-chat-tool-status[data-status='done'] {
+  background: #4ade80;
+}
+
+.en-chat-tool-name {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.en-chat-tool-summary {
+  flex: 1;
+  min-width: 0;
+  color: var(--en-muted);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.en-chat-tool-chevron {
+  width: 15px;
+  height: 15px;
+  color: var(--en-muted);
+  transition: transform 0.18s ease;
+}
+
+.en-chat-tool.expanded .en-chat-tool-chevron {
+  transform: rotate(180deg);
+}
+
+.en-chat-tool-detail {
+  padding: 0 11px 11px;
+  border-top: 1px solid var(--en-border);
+}
+
+.en-chat-tool-detail-meta {
+  margin: 8px 0;
+  color: var(--en-muted);
+  font-size: 11px;
+}
+
+.en-chat-tool-detail-meta code {
+  background: var(--en-soft);
+  padding: 1px 6px;
+  border-radius: 6px;
+  font-size: 11px;
+}
+
+.en-chat-tool-sources {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.en-chat-citations {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.en-chat-citation {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 5px 9px;
+  border: 1px solid var(--en-border);
+  border-radius: 9px;
+  color: var(--en-text);
+  background: color-mix(in srgb, var(--en-bg) 60%, transparent);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.en-chat-citation:hover {
+  background: var(--en-soft);
+}
+
+.en-chat-citation span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.en-chat-citation-index {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  background: var(--chat-surface-active);
+  color: var(--en-text);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.en-chat-composer {
+  padding: 6px 18px 18px;
+  background: var(--en-bg);
+}
+
+.en-chat-composer-capsule {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--en-border);
+  border-radius: 22px;
+  background: var(--chat-surface);
+}
+
+.en-chat-composer-input {
+  min-width: 0;
+  min-height: 36px;
+  max-height: 168px;
+  border: 0;
+  background: transparent;
+  color: var(--en-text);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.45;
+  resize: none;
+  padding: 8px 4px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.en-chat-composer-input::-webkit-scrollbar {
+  display: none;
+}
+
+.en-chat-composer-input::placeholder {
+  color: var(--en-muted);
+}
+
+.en-chat-composer-input:focus {
+  outline: none;
+}
+
+.en-chat-composer-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.en-chat-composer-mode {
+  height: 34px;
+  padding: 0 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 10px;
+  color: var(--en-muted);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.en-chat-composer-mode:hover {
+  background: var(--en-soft);
+  color: var(--en-text);
+}
+
+.en-chat-composer-caret {
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.en-chat-composer-send {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 12px;
+  color: #ffffff;
+  background: var(--chat-surface-active);
+  cursor: pointer;
+  transition:
+    background 0.18s ease,
+    transform 0.18s ease;
+}
+
+.en-chat-composer-send.is-ready {
+  background: var(--en-primary);
+}
+
+.en-chat-composer-send.is-ready:hover {
+  background: var(--chat-accent-hover);
+  transform: translateY(-1px);
+}
+
+.en-chat-composer-send:disabled {
+  cursor: default;
+}
+
+.en-chat-composer-send .en-icon {
+  width: 17px;
+  height: 17px;
+}
+
+.en-chat-scroll,
+.en-chat-history-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--en-border) transparent;
+}
+
+.en-chat-scroll::-webkit-scrollbar,
+.en-chat-history-scroll::-webkit-scrollbar {
+  width: 7px;
+}
+
+.en-chat-scroll::-webkit-scrollbar-thumb,
+.en-chat-history-scroll::-webkit-scrollbar-thumb {
+  background: var(--en-border);
+  border-radius: 999px;
+}
+
+.en-chat-scroll::-webkit-scrollbar-thumb:hover,
+.en-chat-history-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--en-border-strong, var(--en-border));
+}
+
+@media (max-width: 720px) {
+  .en-chat-empty {
+    padding: 6vh 16px 20px;
+  }
+  .en-chat-thread {
+    padding: 6px 12px 20px;
+  }
+  .en-chat-composer {
+    padding: 6px 12px 14px;
+  }
+  .en-chat-topbar {
+    padding: 12px 14px 8px;
+  }
+}
     `, 'ai-chat-package-v2')
 
     const bridge = this.window?.__ELEPHANT_ADDON_VUE__
