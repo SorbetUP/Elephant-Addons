@@ -281,7 +281,9 @@ export default class ElephantCodeExecutionAddon {
     this.disposeRuntimeWatch?.()
     this.observer = null
     this.disposeRuntimeWatch = null
-    this.activeRuntime = runtime?.engine === 'rust' ? runtime : null
+    const isRustRuntime = runtime?.engine === 'rust'
+    const isLegacyRuntime = runtime?.engine === 'muya-js'
+    this.activeRuntime = isRustRuntime || isLegacyRuntime ? runtime : null
     if (!this.activeRuntime) return
 
     this.scan(this.activeRuntime)
@@ -290,7 +292,7 @@ export default class ElephantCodeExecutionAddon {
     }) || null
 
     const root = this.activeRuntime.root
-    if (root && this.window.MutationObserver) {
+    if (isLegacyRuntime && root && this.window.MutationObserver) {
       this.observer = new this.window.MutationObserver(() => this.scan(this.activeRuntime))
       this.observer.observe(root, { childList: true, subtree: true })
     }
