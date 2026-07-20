@@ -84,7 +84,6 @@ export default class ElephantCodeExecutionAddon {
   constructor(api) {
     this.api = api
     this.window = api.experimental.window
-    this.observer = null
     this.disposeEditorWatch = null
     this.disposeRuntimeWatch = null
     this.activeRuntime = null
@@ -277,25 +276,15 @@ export default class ElephantCodeExecutionAddon {
   }
 
   attachEditorRuntime(runtime) {
-    this.observer?.disconnect()
     this.disposeRuntimeWatch?.()
-    this.observer = null
     this.disposeRuntimeWatch = null
-    const isRustRuntime = runtime?.engine === 'rust'
-    const isLegacyRuntime = runtime?.engine === 'muya-js'
-    this.activeRuntime = isRustRuntime || isLegacyRuntime ? runtime : null
+    this.activeRuntime = runtime?.engine === 'rust' ? runtime : null
     if (!this.activeRuntime) return
 
     this.scan(this.activeRuntime)
     this.disposeRuntimeWatch = this.activeRuntime.watch?.(() => this.scan(this.activeRuntime), {
       immediate: false
     }) || null
-
-    const root = this.activeRuntime.root
-    if (isLegacyRuntime && root && this.window.MutationObserver) {
-      this.observer = new this.window.MutationObserver(() => this.scan(this.activeRuntime))
-      this.observer.observe(root, { childList: true, subtree: true })
-    }
   }
 
   installEditorRuntime() {
@@ -455,8 +444,6 @@ export default class ElephantCodeExecutionAddon {
     this.disposeEditorWatch = null
     this.disposeRuntimeWatch = null
     this.activeRuntime = null
-    this.observer?.disconnect()
-    this.observer = null
     delete this.window.__ELEPHANT_CODE_EXECUTION_ENABLED__
     const active = [...this.activeExecutions.values()]
     this.activeExecutions.clear()
