@@ -9,10 +9,19 @@ const node = (documentRef, tag, className = '', text = '') => {
   return element
 }
 
+const unavailableStatus = (error) => ({
+  installed: false,
+  detected: false,
+  running: false,
+  connected: false,
+  error: error instanceof Error ? error.message : String(error)
+})
+
 export default class ElephantCodexAddon {
   constructor(api) {
     this.api = api
     this.window = api.experimental.window
+    this.providerRegistered = false
   }
 
   service(method, params = {}, options = {}) {
@@ -42,6 +51,27 @@ export default class ElephantCodexAddon {
     }
   }
 
+  ensureProvider(status) {
+    if (this.providerRegistered || status?.installed !== true) return false
+    this.api.workspace.registerContribution('ai.providers', {
+      id: `${ADDON_ID}.provider`,
+      providerId: PROVIDER_ID,
+      title: 'Codex subscription',
+      description: 'ChatGPT subscription through the package-owned Codex service.',
+      transport: 'addon-service',
+      endpoint: 'addon-service://elephant.codex-connection',
+      settingsSection: 'ai',
+      capabilities: ['chat'],
+      getModels: async () => {
+        const result = await this.service('codex.models')
+        return Array.isArray(result?.data) ? result.data : Array.isArray(result) ? result : []
+      },
+      chat: (request) => this.chat(request)
+    })
+    this.providerRegistered = true
+    return true
+  }
+
   render(container) {
     const documentRef = container.ownerDocument
     const root = node(documentRef, 'section', 'elephant-codex-settings')
@@ -51,8 +81,10 @@ export default class ElephantCodexAddon {
     const refresh = async () => {
       root.replaceChildren(node(documentRef, 'p', 'elephant-package-muted', 'Checking ChatGPT subscription…'))
       try {
-        const status = await this.service('codex.status').catch((error) => ({ connected: false, error: error.message || String(error) }))
-        const connected = status?.connected === true
+        const status = await this.service('codex.status').catch(unavailableStatus)
+        const installed = status?.installed === true
+        const connected = installed && status?.connected === true
+        this.ensureProvider(status)
         const [usage, models] = connected
           ? await Promise.all([
               this.service('codex.usage').catch(() => null),
@@ -63,10 +95,14 @@ export default class ElephantCodexAddon {
         root.replaceChildren()
         const header = node(documentRef, 'div', 'elephant-codex-header')
         const copy = node(documentRef, 'div')
-        copy.append(node(documentRef, 'h4', '', 'ChatGPT subscription'), node(documentRef, 'p', '', connected ? 'Connected' : 'Disconnected'))
+        const stateLabel = connected ? 'Connected' : installed ? 'Disconnected' : 'Codex not installed'
+        copy.append(node(documentRef, 'h4', '', 'ChatGPT subscription'), node(documentRef, 'p', '', stateLabel))
         const actions = node(documentRef, 'div', 'elephant-codex-actions')
-        const primary = node(documentRef, 'button', '', connected ? 'Disconnect' : 'Connect')
+        const primaryLabel = connected ? 'Disconnect' : installed ? 'Connect' : 'Codex not installed'
+        const primary = node(documentRef, 'button', '', primaryLabel)
+        primary.disabled = !installed
         primary.onclick = async () => {
+          if (!installed) return
           primary.disabled = true
           try {
             const result = await this.service(connected ? 'codex.logout' : 'codex.login')
@@ -78,7 +114,7 @@ export default class ElephantCodexAddon {
             }
             await refresh()
           } finally {
-            primary.disabled = false
+            primary.disabled = !installed
           }
         }
         const reload = node(documentRef, 'button', '', 'Refresh')
@@ -99,6 +135,7 @@ export default class ElephantCodexAddon {
           if (weekly) details.append(node(documentRef, 'p', '', `Weekly: ${weekly.remaining ?? weekly.percentRemaining ?? weekly.used ?? 'available'}`))
         }
         if (status?.runtimePath) details.append(node(documentRef, 'p', '', `Runtime: ${status.runtimePath}`))
+        if (!installed) details.append(node(documentRef, 'p', 'elephant-package-muted', 'Install Codex or place its executable in the Codex Connection addon package.'))
         if (status?.error) details.append(node(documentRef, 'p', 'elephant-package-error', String(status.error)))
         root.append(details)
       } catch (error) {
@@ -124,32 +161,20 @@ export default class ElephantCodexAddon {
 
   async onload(api) {
     await api.native.service.start()
+    const initialStatus = await this.service('codex.status').catch(unavailableStatus)
+    this.ensureProvider(initialStatus)
+
     api.ui.registerStyle(`
       .elephant-codex-settings { display:grid; gap:14px; padding:14px; border:1px solid var(--en-border); border-radius:14px; background:var(--en-surface); }
       .elephant-codex-header { display:flex; align-items:center; justify-content:space-between; gap:12px; }
       .elephant-codex-header h4,.elephant-codex-header p,.elephant-codex-details p { margin:0; }
-      .elephant-codex-header p,.elephant-codex-details { color:var(--en-muted); font-size:12px; }
+      .elephant-codex-header p,.elephant-codex-details,.elephant-package-muted { color:var(--en-muted); font-size:12px; }
       .elephant-codex-actions { display:flex; gap:8px; }
       .elephant-codex-actions button { min-height:34px; padding:0 12px; border:1px solid var(--en-border); border-radius:9px; background:var(--en-surface); color:var(--en-text); cursor:pointer; }
+      .elephant-codex-actions button:disabled { opacity:.6; cursor:not-allowed; }
       .elephant-codex-details { display:grid; gap:6px; }
       .elephant-package-error { color:var(--en-danger,#b42318); }
     `, 'codex-package')
-
-    api.workspace.registerContribution('ai.providers', {
-      id: `${ADDON_ID}.provider`,
-      providerId: PROVIDER_ID,
-      title: 'Codex subscription',
-      description: 'ChatGPT subscription through the package-owned Codex service.',
-      transport: 'addon-service',
-      endpoint: 'addon-service://elephant.codex-connection',
-      settingsSection: 'ai',
-      capabilities: ['chat'],
-      getModels: async () => {
-        const result = await this.service('codex.models')
-        return Array.isArray(result?.data) ? result.data : Array.isArray(result) ? result : []
-      },
-      chat: (request) => this.chat(request)
-    })
 
     api.settings.registerSection({
       id: `${ADDON_ID}.settings`,
@@ -164,6 +189,7 @@ export default class ElephantCodexAddon {
   }
 
   async onunload() {
+    this.providerRegistered = false
     await this.disableRoutes()
     await this.api.native.service.stop().catch(() => {})
   }
