@@ -10,21 +10,24 @@ permissions:
   contents: read
 
 jobs:
-  sites:
+  addons:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Validate Sites JavaScript syntax
+      - name: Validate addon JavaScript syntax
         run: |
           node --check official/sites/main.js
           node --check official/sites/site-builder.js
+          node --check official/codex-connection/main.js
       - name: Run Sites generator regression checks
         run: node tests/sites-regression.mjs
       - name: Run Sites runtime integration checks
         run: node tests/sites-runtime.mjs
+      - name: Run Codex availability regression checks
+        run: node --test tests/codex-availability.test.mjs
       - name: Validate published metadata
         run: |
           node - <<'NODE'
