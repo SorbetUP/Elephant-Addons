@@ -2,7 +2,7 @@
   "version": 1,
   "branch": "main",
   "packageRoot": "official",
-  "updatedAt": "2026-07-17T00:45:00.000Z",
+  "updatedAt": "2026-07-31T03:56:20.000Z",
   "addons": [
     {
       "id": "elephant.dashboard",
@@ -151,8 +151,8 @@
       "id": "elephant.code-execution",
       "slug": "code-execution",
       "name": "Code execution",
-      "version": "2.2.0",
-      "description": "Runs local interpreters through an interruptible package service and isolated JavaScript Workers on Android and iOS.",
+      "version": "2.2.1",
+      "description": "Runs fenced code blocks with package-owned interpreters, bounded output, timeout and interruption.",
       "author": "Elephant",
       "official": true,
       "manifestPath": "official/code-execution/manifest.json",
