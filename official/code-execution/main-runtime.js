@@ -1,6 +1,10 @@
 import ElephantCodeExecutionAddon from './main.js'
 
 export default class ElephantCodeExecutionRuntimeAddon extends ElephantCodeExecutionAddon {
+  async onload(api) {
+    return super.onload(api)
+  }
+
   installEditorRuntime() {
     const attach = (event) => this.attachEditorRuntime(event?.value ?? event)
 
