@@ -1,14 +1,14 @@
 {
   "id": "elephant.code-execution",
   "name": "Code execution",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "Runs fenced code blocks with package-owned interpreters, bounded output, timeout and interruption.",
   "author": "Elephant",
   "apiVersion": 1,
   "minAppVersion": "0.18.9",
   "runtime": {
     "type": "javascript-worker",
-    "entry": "main.js"
+    "entry": "main-runtime.js"
   },
   "permissions": {
     "storage": true,
