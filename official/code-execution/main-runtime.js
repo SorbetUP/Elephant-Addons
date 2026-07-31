@@ -31,14 +31,13 @@ export default class ElephantCodeExecutionRuntimeAddon extends ElephantCodeExecu
           reason,
           codeBlocks: blocks.length,
           toolbarsBefore: before,
-          toolbarsAfter: after,
-          revision: Number(runtime?.snapshot?.()?.revision || 0)
+          toolbarsAfter: after
         })
       }
     }
 
-    const queueMicrotask = this.window?.queueMicrotask || globalThis.queueMicrotask
-    if (typeof queueMicrotask === 'function') queueMicrotask(run)
+    if (typeof this.window?.queueMicrotask === 'function') this.window.queueMicrotask(run)
+    else if (typeof globalThis.queueMicrotask === 'function') globalThis.queueMicrotask(run)
     else Promise.resolve().then(run)
   }
 
