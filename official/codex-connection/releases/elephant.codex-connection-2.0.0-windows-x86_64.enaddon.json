@@ -1,0 +1,12 @@
+{
+  "blake3": "2341eb2de16a36ee27594cd2b4304c75a83db28b90bc4cc38af9d4215f5a8d40",
+  "bytes": 422454,
+  "path": "D:\\a\\Elephant-Addons\\Elephant-Addons\\build\\out\\addons\\releases\\elephant.codex-connection\\elephant.codex-connection-2.0.0-windows-x86_64.enaddon",
+  "id": "elephant.codex-connection",
+  "version": "2.0.0",
+  "platform": "windows-x86_64",
+  "runner": "service",
+  "modules": 1,
+  "file": "elephant.codex-connection-2.0.0-windows-x86_64.enaddon",
+  "catalogPath": "official/codex-connection/releases/elephant.codex-connection-2.0.0-windows-x86_64.enaddon"
+}

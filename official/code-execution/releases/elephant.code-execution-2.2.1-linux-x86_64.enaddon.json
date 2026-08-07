@@ -1,0 +1,12 @@
+{
+  "blake3": "9b1999d7782e9cf3d88251bb64644094800e768f6bde89ba971208bc2d4631a5",
+  "bytes": 357599,
+  "path": "/home/runner/work/Elephant-Addons/Elephant-Addons/build/out/addons/releases/elephant.code-execution/elephant.code-execution-2.2.1-linux-x86_64.enaddon",
+  "id": "elephant.code-execution",
+  "version": "2.2.1",
+  "platform": "linux-x86_64",
+  "runner": "service",
+  "modules": 2,
+  "file": "elephant.code-execution-2.2.1-linux-x86_64.enaddon",
+  "catalogPath": "official/code-execution/releases/elephant.code-execution-2.2.1-linux-x86_64.enaddon"
+}

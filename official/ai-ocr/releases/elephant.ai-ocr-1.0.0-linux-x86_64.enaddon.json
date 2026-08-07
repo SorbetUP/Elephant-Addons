@@ -1,0 +1,12 @@
+{
+  "blake3": "01fcd208d41c20f12de0e24ea1922949996e6b9634667590f80b81de8297259a",
+  "bytes": 289309,
+  "path": "/home/runner/work/Elephant-Addons/Elephant-Addons/build/out/addons/releases/elephant.ai-ocr/elephant.ai-ocr-1.0.0-linux-x86_64.enaddon",
+  "id": "elephant.ai-ocr",
+  "version": "1.0.0",
+  "platform": "linux-x86_64",
+  "runner": "process",
+  "modules": 1,
+  "file": "elephant.ai-ocr-1.0.0-linux-x86_64.enaddon",
+  "catalogPath": "official/ai-ocr/releases/elephant.ai-ocr-1.0.0-linux-x86_64.enaddon"
+}

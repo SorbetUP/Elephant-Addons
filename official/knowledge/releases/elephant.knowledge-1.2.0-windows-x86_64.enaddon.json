@@ -1,0 +1,12 @@
+{
+  "blake3": "98c04bbbe574f7cf7aa9135f2ba9de77fcac93b20642c32be1da43270b484c79",
+  "bytes": 1538597,
+  "path": "D:\\a\\Elephant-Addons\\Elephant-Addons\\build\\out\\addons\\releases\\elephant.knowledge\\elephant.knowledge-1.2.0-windows-x86_64.enaddon",
+  "id": "elephant.knowledge",
+  "version": "1.2.0",
+  "platform": "windows-x86_64",
+  "runner": "service",
+  "modules": 1,
+  "file": "elephant.knowledge-1.2.0-windows-x86_64.enaddon",
+  "catalogPath": "official/knowledge/releases/elephant.knowledge-1.2.0-windows-x86_64.enaddon"
+}

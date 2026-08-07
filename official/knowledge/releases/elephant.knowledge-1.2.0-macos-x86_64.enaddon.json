@@ -1,0 +1,12 @@
+{
+  "blake3": "1f7d77c7e4d6bd7153d3484198fdd2e143ef5c1bc4ad3316f241012648e1bf7f",
+  "bytes": 1751573,
+  "path": "/Users/runner/work/Elephant-Addons/Elephant-Addons/build/out/addons/releases/elephant.knowledge/elephant.knowledge-1.2.0-macos-x86_64.enaddon",
+  "id": "elephant.knowledge",
+  "version": "1.2.0",
+  "platform": "macos-x86_64",
+  "runner": "service",
+  "modules": 1,
+  "file": "elephant.knowledge-1.2.0-macos-x86_64.enaddon",
+  "catalogPath": "official/knowledge/releases/elephant.knowledge-1.2.0-macos-x86_64.enaddon"
+}

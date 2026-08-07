@@ -1,0 +1,12 @@
+{
+  "blake3": "9e3b9049ed2f015c0c931a4fc15d7294daac09e187a1473922e0773644f9a1d9",
+  "bytes": 7320442,
+  "path": "/Users/runner/work/Elephant-Addons/Elephant-Addons/build/out/addons/releases/elephant.sync/elephant.sync-1.2.0-macos-x86_64.enaddon",
+  "id": "elephant.sync",
+  "version": "1.2.0",
+  "platform": "macos-x86_64",
+  "runner": "service",
+  "modules": 3,
+  "file": "elephant.sync-1.2.0-macos-x86_64.enaddon",
+  "catalogPath": "official/sync/releases/elephant.sync-1.2.0-macos-x86_64.enaddon"
+}

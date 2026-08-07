@@ -1,0 +1,12 @@
+{
+  "blake3": "cf8b245c1c61c565886659c4e961b7899d75cf6a5502bfde0ff3f050f98b5751",
+  "bytes": 546358,
+  "path": "/Users/runner/work/Elephant-Addons/Elephant-Addons/build/out/addons/releases/elephant.codex-connection/elephant.codex-connection-2.0.0-macos-aarch64.enaddon",
+  "id": "elephant.codex-connection",
+  "version": "2.0.0",
+  "platform": "macos-aarch64",
+  "runner": "service",
+  "modules": 1,
+  "file": "elephant.codex-connection-2.0.0-macos-aarch64.enaddon",
+  "catalogPath": "official/codex-connection/releases/elephant.codex-connection-2.0.0-macos-aarch64.enaddon"
+}

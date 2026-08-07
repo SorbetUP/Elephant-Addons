@@ -1,0 +1,12 @@
+{
+  "blake3": "edaa13b4039ed04f533e6f9e81c445effb76991136cbe9eb8c191bba1765068f",
+  "bytes": 182213,
+  "path": "D:\\a\\Elephant-Addons\\Elephant-Addons\\build\\out\\addons\\releases\\elephant.ai-ocr\\elephant.ai-ocr-1.0.0-windows-x86_64.enaddon",
+  "id": "elephant.ai-ocr",
+  "version": "1.0.0",
+  "platform": "windows-x86_64",
+  "runner": "process",
+  "modules": 1,
+  "file": "elephant.ai-ocr-1.0.0-windows-x86_64.enaddon",
+  "catalogPath": "official/ai-ocr/releases/elephant.ai-ocr-1.0.0-windows-x86_64.enaddon"
+}

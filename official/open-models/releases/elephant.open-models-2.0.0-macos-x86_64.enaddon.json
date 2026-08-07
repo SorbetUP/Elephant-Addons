@@ -1,0 +1,12 @@
+{
+  "blake3": "de0f7d88504ae617e3348373362172bfee4462ed13740ce3c1639beec7f1be7b",
+  "bytes": 2077118,
+  "path": "/Users/runner/work/Elephant-Addons/Elephant-Addons/build/out/addons/releases/elephant.open-models/elephant.open-models-2.0.0-macos-x86_64.enaddon",
+  "id": "elephant.open-models",
+  "version": "2.0.0",
+  "platform": "macos-x86_64",
+  "runner": "service",
+  "modules": 1,
+  "file": "elephant.open-models-2.0.0-macos-x86_64.enaddon",
+  "catalogPath": "official/open-models/releases/elephant.open-models-2.0.0-macos-x86_64.enaddon"
+}

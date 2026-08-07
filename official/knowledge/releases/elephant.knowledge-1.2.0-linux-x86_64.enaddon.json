@@ -1,0 +1,12 @@
+{
+  "blake3": "08e535abd01c21061dca19b363c2deb55bb8c3630379b912524e010685841fd7",
+  "bytes": 1875686,
+  "path": "/home/runner/work/Elephant-Addons/Elephant-Addons/build/out/addons/releases/elephant.knowledge/elephant.knowledge-1.2.0-linux-x86_64.enaddon",
+  "id": "elephant.knowledge",
+  "version": "1.2.0",
+  "platform": "linux-x86_64",
+  "runner": "service",
+  "modules": 1,
+  "file": "elephant.knowledge-1.2.0-linux-x86_64.enaddon",
+  "catalogPath": "official/knowledge/releases/elephant.knowledge-1.2.0-linux-x86_64.enaddon"
+}
