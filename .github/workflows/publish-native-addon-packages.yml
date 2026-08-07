@@ -1,0 +1,117 @@
+name: Publish native addon packages
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-native-addon-packages.yml'
+      - 'build/scripts/build-physical-addon.mjs'
+      - 'build/scripts/build-mobile-addon-package.mjs'
+      - 'build/scripts/update-catalog-packages.mjs'
+      - 'build/tools/enaddon-packager/**'
+      - 'official/**'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-native-addon-packages
+  cancel-in-progress: true
+
+jobs:
+  desktop:
+    name: Build ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x86_64
+            runner: ubuntu-latest
+          - platform: windows-x86_64
+            runner: windows-latest
+          - platform: macos-x86_64
+            runner: macos-15-intel
+          - platform: macos-aarch64
+            runner: macos-15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build native addon packages
+        shell: bash
+        env:
+          ELEPHANT_ADDON_PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -euxo pipefail
+          for source in \
+            official/ai-ocr \
+            official/code-execution \
+            official/codex-connection \
+            official/knowledge \
+            official/open-models \
+            official/sync
+          do
+            node build/scripts/build-physical-addon.mjs "$source"
+          done
+      - uses: actions/upload-artifact@v6
+        with:
+          name: native-addon-package-${{ matrix.platform }}
+          path: build/out/addons/releases/**
+          if-no-files-found: error
+
+  mobile:
+    name: Build Code execution ${{ matrix.platform }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [android-aarch64, android-x86_64, ios-aarch64, ios-x86_64]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Package mobile Web Worker runtime
+        run: node build/scripts/build-mobile-addon-package.mjs official/code-execution "${{ matrix.platform }}"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: mobile-addon-package-${{ matrix.platform }}
+          path: build/out/addons/releases/**
+          if-no-files-found: error
+
+  publish:
+    needs: [desktop, mobile]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v6
+        with:
+          pattern: '*-addon-package-*'
+          path: build/out/addons/releases
+          merge-multiple: true
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Synchronize catalog and packages
+        run: |
+          node build/scripts/update-catalog-packages.mjs
+          npm run test:catalog
+      - name: Commit synchronized packages
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add catalog.json official/*/releases
+          if git diff --cached --quiet; then
+            echo 'Addon packages already synchronized.'
+          else
+            git commit -m 'build: publish native addon packages'
+            git push origin HEAD:main
+          fi

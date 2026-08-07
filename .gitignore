@@ -1,0 +1,3 @@
+build/out/
+build/tools/enaddon-packager/target/
+official/**/native/target/
