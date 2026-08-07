@@ -2,7 +2,7 @@
   "version": 1,
   "branch": "main",
   "packageRoot": "official",
-  "updatedAt": "2026-08-07T18:06:21Z",
+  "updatedAt": "2026-08-07T19:07:44Z",
   "addons": [
     {
       "id": "elephant.ai",
@@ -67,19 +67,19 @@
         },
         "linux-x86_64": {
           "path": "official/code-execution/releases/elephant.code-execution-2.2.1-linux-x86_64.enaddon",
-          "hash": "9b1999d7782e9cf3d88251bb64644094800e768f6bde89ba971208bc2d4631a5"
+          "hash": "9e4b0791039c4e1c9197510c04d07ff6e051da3f531ddcc14a4e385e5a76996e"
         },
         "macos-aarch64": {
           "path": "official/code-execution/releases/elephant.code-execution-2.2.1-macos-aarch64.enaddon",
-          "hash": "2ae45a446e3422677b9360015df3256212ac388a08f0c34a2120bc3409d7c789"
+          "hash": "896cce33fc3dd491ebc6d5ae886ba5669419958022eca98a6e0c5cdb920bdea6"
         },
         "macos-x86_64": {
           "path": "official/code-execution/releases/elephant.code-execution-2.2.1-macos-x86_64.enaddon",
-          "hash": "f8c686c1d8d52eaea0e532830c2a413df4c233bd73a15bac60e01af5cfa8fb4a"
+          "hash": "c097996805c1f42c1835aaeff6e7da42af00bd8a9111151ef39bd92c0944126a"
         },
         "windows-x86_64": {
           "path": "official/code-execution/releases/elephant.code-execution-2.2.1-windows-x86_64.enaddon",
-          "hash": "b8bf13b01c53169c42250324ea76e3f22ce96eb347a93184252bf3bf3a4af597"
+          "hash": "8115ed2f4686e1c5e50eb9ab7a262a6077a8803c627a7b153afef5a779b9303e"
         }
       }
     },
@@ -109,7 +109,7 @@
         },
         "windows-x86_64": {
           "path": "official/codex-connection/releases/elephant.codex-connection-2.0.0-windows-x86_64.enaddon",
-          "hash": "2341eb2de16a36ee27594cd2b4304c75a83db28b90bc4cc38af9d4215f5a8d40"
+          "hash": "5cbdca78db714e568547f3c52e9d437215e7fa45670e5fd36bc15ce71935cc15"
         }
       }
     },
@@ -172,7 +172,7 @@
         },
         "windows-x86_64": {
           "path": "official/knowledge/releases/elephant.knowledge-1.2.0-windows-x86_64.enaddon",
-          "hash": "98c04bbbe574f7cf7aa9135f2ba9de77fcac93b20642c32be1da43270b484c79"
+          "hash": "a4b074abde5d43143715fcbc43a19a259ce1e8278a6ca8313949b89e636ece50"
         }
       }
     },
@@ -202,7 +202,7 @@
         },
         "windows-x86_64": {
           "path": "official/ai-ocr/releases/elephant.ai-ocr-1.0.0-windows-x86_64.enaddon",
-          "hash": "edaa13b4039ed04f533e6f9e81c445effb76991136cbe9eb8c191bba1765068f"
+          "hash": "03470f3fbfca029a0f0f849ab6924212c568af008d613ce75c2e4fad61f9b88f"
         }
       }
     },
@@ -232,7 +232,7 @@
         },
         "windows-x86_64": {
           "path": "official/open-models/releases/elephant.open-models-2.0.0-windows-x86_64.enaddon",
-          "hash": "1ed7708f38688604acccbd7517b816f7aa2580466cdc73c0732d14eafd41cc5c"
+          "hash": "3eac783cc10d33c5a9cff54ec52d773c3ff57d099952776c1d0b49cd118a951f"
         }
       }
     },
@@ -295,7 +295,7 @@
         },
         "windows-x86_64": {
           "path": "official/sync/releases/elephant.sync-1.2.0-windows-x86_64.enaddon",
-          "hash": "0d38af2e9dfd3acc9bd89c9efa71afa600fdb5914e37519a3d0db35910e724c2"
+          "hash": "f8eb4deb140a0dca90a82e0a058fb4c03394a094062daa838cea76ab481efc18"
         }
       }
     },
