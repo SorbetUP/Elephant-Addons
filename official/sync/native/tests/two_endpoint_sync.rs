@@ -1,7 +1,8 @@
 use elephant_sync_service::{
   manifest::scan_vault,
   pairing::{
-    consume_pair_request, create_pending_invite, parse_invite, register_accepted_peer,
+    consume_pair_request, create_pending_invite, parse_invite, read_config, register_accepted_peer,
+    write_config,
   },
   protocol::{expect_control, read_control, write_control, ControlMessage, PairRequest, ALPN},
   session::{read_baseline, run_all_sessions, serve_sync_session},
@@ -9,7 +10,7 @@ use elephant_sync_service::{
 use iroh::{
   endpoint::{presets, Connection},
   protocol::{AcceptError, ProtocolHandler, Router},
-  Endpoint, EndpointAddr, Watcher as _,
+  Endpoint, EndpointAddr, SecretKey, Watcher as _,
 };
 use serde_json::to_value;
 use std::{fmt, fs, io, path::PathBuf, time::Duration};
@@ -100,6 +101,30 @@ async fn wait_addr(endpoint: &Endpoint) -> EndpointAddr {
   .expect("endpoint must publish a dialable address")
 }
 
+fn spawn_router(endpoint: &Endpoint, vault: &PathBuf, name: &str) -> Router {
+  Router::builder(endpoint.clone())
+    .accept(
+      ALPN,
+      PackageProtocol {
+        endpoint: endpoint.clone(),
+        vault: vault.clone(),
+        name: name.to_string(),
+      },
+    )
+    .spawn()
+}
+
+async fn refresh_peer_address(vault: &PathBuf, peer_id: &str, endpoint: &Endpoint) {
+  let mut config = read_config(vault).expect("paired Sync config must survive restart");
+  let peer = config
+    .peers
+    .iter_mut()
+    .find(|peer| peer.endpoint_id == peer_id)
+    .expect("paired peer must survive restart");
+  peer.endpoint_addr = Some(wait_addr(endpoint).await);
+  write_config(vault, &config).expect("restarted peer address must be persisted");
+}
+
 async fn pair(
   inviter_endpoint: &Endpoint,
   inviter_vault: &PathBuf,
@@ -161,6 +186,17 @@ fn temp_vault(name: &str) -> PathBuf {
   ))
 }
 
+fn conflict_files(vault: &PathBuf) -> Vec<PathBuf> {
+  let directory = vault.join(".conflit");
+  let mut files = fs::read_dir(directory)
+    .expect("conflict directory must exist")
+    .map(|entry| entry.unwrap().path())
+    .filter(|path| path.is_file())
+    .collect::<Vec<_>>();
+  files.sort();
+  files
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn physical_package_pairs_and_synchronizes_two_real_iroh_endpoints() {
   println!("[Sync] run:start owner=elephant.sync transport=iroh");
@@ -178,26 +214,8 @@ async fn physical_package_pairs_and_synchronizes_two_real_iroh_endpoints() {
     endpoint_a.id(),
     endpoint_b.id()
   );
-  let router_a = Router::builder(endpoint_a.clone())
-    .accept(
-      ALPN,
-      PackageProtocol {
-        endpoint: endpoint_a.clone(),
-        vault: vault_a.clone(),
-        name: "Device A".to_string(),
-      },
-    )
-    .spawn();
-  let router_b = Router::builder(endpoint_b.clone())
-    .accept(
-      ALPN,
-      PackageProtocol {
-        endpoint: endpoint_b.clone(),
-        vault: vault_b.clone(),
-        name: "Device B".to_string(),
-      },
-    )
-    .spawn();
+  let router_a = spawn_router(&endpoint_a, &vault_a, "Device A");
+  let router_b = spawn_router(&endpoint_b, &vault_b, "Device B");
 
   pair(&endpoint_a, &vault_a, &endpoint_b, &vault_b).await;
   println!("[Sync] session:start direction=bidirectional");
@@ -239,4 +257,120 @@ async fn physical_package_pairs_and_synchronizes_two_real_iroh_endpoints() {
   let _ = fs::remove_dir_all(vault_a);
   let _ = fs::remove_dir_all(vault_b);
   println!("[Sync] run:complete");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn physical_package_survives_restart_and_preserves_concurrent_edits() {
+  println!("[Sync] restart-conflict:start owner=elephant.sync transport=iroh");
+  let vault_a = temp_vault("restart-a");
+  let vault_b = temp_vault("restart-b");
+  fs::create_dir_all(&vault_a).unwrap();
+  fs::create_dir_all(&vault_b).unwrap();
+  fs::write(vault_a.join("Shared.md"), "baseline").unwrap();
+
+  let key_a = SecretKey::generate();
+  let key_b = SecretKey::generate();
+  let endpoint_a = Endpoint::builder(presets::Minimal)
+    .secret_key(key_a.clone())
+    .bind()
+    .await
+    .unwrap();
+  let endpoint_b = Endpoint::builder(presets::Minimal)
+    .secret_key(key_b.clone())
+    .bind()
+    .await
+    .unwrap();
+  let id_a = endpoint_a.id();
+  let id_b = endpoint_b.id();
+  let router_a = spawn_router(&endpoint_a, &vault_a, "Device A");
+  let router_b = spawn_router(&endpoint_b, &vault_b, "Device B");
+
+  pair(&endpoint_a, &vault_a, &endpoint_b, &vault_b).await;
+  let initial = tokio::time::timeout(
+    Duration::from_secs(60),
+    run_all_sessions(&endpoint_b, &vault_b),
+  )
+  .await
+  .expect("initial synchronization timed out")
+  .expect("initial synchronization failed");
+  assert_eq!(initial[0].transferred_files, 1);
+  assert_eq!(fs::read_to_string(vault_b.join("Shared.md")).unwrap(), "baseline");
+
+  drop(router_a);
+  drop(router_b);
+  endpoint_a.close().await;
+  endpoint_b.close().await;
+
+  fs::write(vault_a.join("Shared.md"), "edited on device A").unwrap();
+  tokio::time::sleep(Duration::from_millis(30)).await;
+  fs::write(vault_b.join("Shared.md"), "edited on device B after restart").unwrap();
+
+  let restarted_a = Endpoint::builder(presets::Minimal)
+    .secret_key(key_a)
+    .bind()
+    .await
+    .unwrap();
+  let restarted_b = Endpoint::builder(presets::Minimal)
+    .secret_key(key_b)
+    .bind()
+    .await
+    .unwrap();
+  assert_eq!(restarted_a.id(), id_a);
+  assert_eq!(restarted_b.id(), id_b);
+  println!("[Sync] restart:stable-identities equal=true");
+
+  refresh_peer_address(&vault_a, &id_b.to_string(), &restarted_b).await;
+  refresh_peer_address(&vault_b, &id_a.to_string(), &restarted_a).await;
+  let restarted_router_a = spawn_router(&restarted_a, &vault_a, "Device A");
+  let restarted_router_b = spawn_router(&restarted_b, &vault_b, "Device B");
+
+  let conflicted = tokio::time::timeout(
+    Duration::from_secs(60),
+    run_all_sessions(&restarted_b, &vault_b),
+  )
+  .await
+  .expect("post-restart conflict synchronization timed out")
+  .expect("post-restart conflict synchronization failed");
+  assert_eq!(conflicted.len(), 1);
+  assert_eq!(conflicted[0].conflicts, vec!["Shared.md"]);
+  assert_eq!(
+    fs::read_to_string(vault_a.join("Shared.md")).unwrap(),
+    "edited on device B after restart"
+  );
+  assert_eq!(
+    fs::read_to_string(vault_b.join("Shared.md")).unwrap(),
+    "edited on device B after restart"
+  );
+  let conflicts_a = conflict_files(&vault_a);
+  let conflicts_b = conflict_files(&vault_b);
+  assert_eq!(conflicts_a.len(), 1);
+  assert_eq!(conflicts_b.len(), 1);
+  assert_eq!(fs::read_to_string(&conflicts_a[0]).unwrap(), "edited on device A");
+  assert_eq!(fs::read_to_string(&conflicts_b[0]).unwrap(), "edited on device A");
+  println!("[Sync] conflict:preserved files=1 both_vaults=true");
+
+  let manifest_a = scan_vault(&vault_a).unwrap();
+  let manifest_b = scan_vault(&vault_b).unwrap();
+  assert!(manifest_a.content_equals(&manifest_b));
+  assert!(read_baseline(&vault_a, &id_b.to_string()).content_equals(&manifest_a));
+  assert!(read_baseline(&vault_b, &id_a.to_string()).content_equals(&manifest_b));
+
+  let no_op = tokio::time::timeout(
+    Duration::from_secs(60),
+    run_all_sessions(&restarted_b, &vault_b),
+  )
+  .await
+  .expect("post-conflict no-op synchronization timed out")
+  .expect("post-conflict no-op synchronization failed");
+  assert_eq!(no_op[0].transferred_files, 0);
+  assert!(no_op[0].conflicts.is_empty());
+  println!("[Sync] restart:resync files=0 conflicts=0");
+
+  drop(restarted_router_a);
+  drop(restarted_router_b);
+  restarted_a.close().await;
+  restarted_b.close().await;
+  let _ = fs::remove_dir_all(vault_a);
+  let _ = fs::remove_dir_all(vault_b);
+  println!("[Sync] restart-conflict:complete");
 }

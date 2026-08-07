@@ -5,7 +5,7 @@
   "description": "Adds OCR through a separately installed native sidecar. No OCR code is shipped in Elephant core.",
   "author": "Elephant",
   "apiVersion": 1,
-  "minAppVersion": "0.18.9",
+  "minAppVersion": "0.1.0",
   "runtime": {
     "type": "javascript-worker",
     "entry": "main.js"

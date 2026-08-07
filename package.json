@@ -5,6 +5,13 @@
   "type": "module",
   "scripts": {
     "test:js": "node --test tests/*.test.mjs",
-    "check:js": "node --check official/ai/inference.js && node --check official/ai/main.js && node --check official/ai-chat/agent.js && node --check official/ai-chat/main.js && node --check official/ai-chat/main.v2.js && node --check official/wiki/main.v2.js"
+    "test:catalog": "node --test tests/catalog-contract.test.mjs",
+    "check:js": "find official -type f -name '*.js' -print0 | xargs -0 -n1 node --check",
+    "catalog:packages": "node build/scripts/update-catalog-packages.mjs",
+    "addon:build": "node build/scripts/build-physical-addon.mjs",
+    "addon:build:ocr": "node build/scripts/build-physical-addon.mjs official/ai-ocr",
+    "addon:build:open-models": "node build/scripts/build-physical-addon.mjs official/open-models",
+    "addon:build:codex": "node build/scripts/build-physical-addon.mjs official/codex-connection",
+    "addon:build:mobile": "node build/scripts/build-mobile-addon-package.mjs official/code-execution"
   }
 }

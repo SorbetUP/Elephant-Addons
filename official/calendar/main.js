@@ -2,6 +2,7 @@ const ADDON_ID = 'elephant.calendar'
 const VIEW_ID = `${ADDON_ID}.workspace`
 const PROVIDER_RESOURCE = 'calendar.provider'
 const EVENTS_KEY_PREFIX = 'events'
+const EVENTS_CHANGED = 'elephantnote:calendar-events-changed'
 
 const node = (documentRef, tag, className = '', text = '') => {
   const element = documentRef.createElement(tag)
@@ -20,9 +21,7 @@ const decodeIcsText = (value = '') => String(value || '')
 const normalizeIcsDate = (value = '') => {
   const input = String(value || '').trim()
   if (!input) return ''
-  if (/^\d{8}$/.test(input)) {
-    return `${input.slice(0, 4)}-${input.slice(4, 6)}-${input.slice(6, 8)}`
-  }
+  if (/^\d{8}$/.test(input)) return `${input.slice(0, 4)}-${input.slice(4, 6)}-${input.slice(6, 8)}`
   const match = input.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z?)$/)
   if (!match) return input
   const [, year, month, day, hour, minute, second, zulu] = match
@@ -69,7 +68,6 @@ export const parseIcs = (source = '') => {
     const key = line.slice(0, separator).split(';')[0].toUpperCase()
     current[key] = line.slice(separator + 1)
   }
-
   return events
 }
 
@@ -83,10 +81,7 @@ export const normalizeEvents = (value) => (Array.isArray(value) ? value : [])
       location: String(event?.location || ''),
       description: String(event?.description || '')
     }
-    return {
-      ...normalized,
-      id: String(event?.id || deterministicEventId(normalized))
-    }
+    return { ...normalized, id: String(event?.id || deterministicEventId(normalized)) }
   })
   .sort((left, right) => left.startsAt.localeCompare(right.startsAt) || left.title.localeCompare(right.title))
 
@@ -120,7 +115,7 @@ export default class ElephantCalendarAddon {
   async saveEvents(events) {
     const normalized = normalizeEvents(events)
     await this.api.storage.set(await this.storageKey(), normalized)
-    this.api.app.emit('elephantnote:calendar-events-changed', { events: normalized })
+    this.api.app.emit(EVENTS_CHANGED, { events: normalized })
     return normalized
   }
 
@@ -154,7 +149,7 @@ export default class ElephantCalendarAddon {
 
   async clearEvents() {
     await this.api.storage.remove(await this.storageKey())
-    this.api.app.emit('elephantnote:calendar-events-changed', { events: [] })
+    this.api.app.emit(EVENTS_CHANGED, { events: [] })
     return []
   }
 
@@ -163,8 +158,11 @@ export default class ElephantCalendarAddon {
     const root = node(documentRef, 'section', 'elephant-calendar-package')
     container.replaceChildren(root)
     let disposed = false
+    let refreshQueued = false
 
     const refresh = async () => {
+      if (disposed || refreshQueued) return
+      refreshQueued = true
       root.replaceChildren(node(documentRef, 'p', 'elephant-package-muted', 'Loading calendar…'))
       try {
         const events = await this.loadEvents()
@@ -194,15 +192,11 @@ export default class ElephantCalendarAddon {
           try {
             const result = await this.importFiles(picker.files)
             feedback.textContent = [`Imported ${result.imported} event(s).`, ...result.failures.map((failure) => `${failure.file}: ${failure.error}`)].join('\n')
-            await refresh()
           } finally {
             importButton.disabled = !picker.files?.length
           }
         }
-        clearButton.onclick = async () => {
-          await this.clearEvents()
-          await refresh()
-        }
+        clearButton.onclick = () => this.clearEvents()
         actions.append(picker, importButton, clearButton)
         root.append(actions, feedback)
 
@@ -221,12 +215,16 @@ export default class ElephantCalendarAddon {
         root.append(list)
       } catch (error) {
         if (!disposed) root.replaceChildren(node(documentRef, 'p', 'elephant-package-error', error instanceof Error ? error.message : String(error)))
+      } finally {
+        refreshQueued = false
       }
     }
 
+    const stopEvents = this.api.app.on?.(EVENTS_CHANGED, () => void refresh())
     void refresh()
     return () => {
       disposed = true
+      stopEvents?.()
       root.remove()
     }
   }

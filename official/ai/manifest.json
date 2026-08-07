@@ -5,7 +5,7 @@
   "description": "Configures API providers and exposes versioned chat and embedding inference to separately installed AI modules.",
   "author": "Elephant",
   "apiVersion": 1,
-  "minAppVersion": "0.18.9",
+  "minAppVersion": "0.1.0",
   "runtime": {
     "type": "javascript-worker",
     "entry": "main.js"

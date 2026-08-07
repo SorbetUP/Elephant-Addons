@@ -2,7 +2,7 @@
   "version": 1,
   "branch": "main",
   "packageRoot": "official",
-  "updatedAt": "2026-07-31T03:56:20.000Z",
+  "updatedAt": "2026-07-31T09:10:00.000Z",
   "addons": [
     {
       "id": "elephant.dashboard",
@@ -156,7 +156,7 @@
       "author": "Elephant",
       "official": true,
       "manifestPath": "official/code-execution/manifest.json",
-      "entryPath": "official/code-execution/main.js"
+      "entryPath": "official/code-execution/main-runtime.js"
     },
     {
       "id": "elephant.google-keep-import",
