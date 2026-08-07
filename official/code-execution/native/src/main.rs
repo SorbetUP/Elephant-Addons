@@ -362,6 +362,7 @@ fn prepared_output(output: CapturedOutput, line_limit: usize) -> Value {
 fn run_execution(prepared: &PreparedExecution, cancel: Arc<AtomicBool>) -> Result<Value, String> {
   let started = Instant::now();
   let mut command = Command::new(&prepared.executable);
+  sanitize_interpreter_environment(&mut command, &prepared.executable);
   command.args(&prepared.args);
   command.current_dir(&prepared.cwd);
   command.stdin(Stdio::piped());
@@ -439,7 +440,9 @@ fn executable_status(params: &Value) -> Value {
     return json!({ "available": false, "error": "No executable was configured" });
   }
   let started = Instant::now();
-  let mut child = match Command::new(executable)
+  let mut command = Command::new(executable);
+  sanitize_interpreter_environment(&mut command, executable);
+  let mut child = match command
     .arg("--version")
     .stdout(Stdio::piped())
     .stderr(Stdio::piped())
@@ -479,6 +482,23 @@ fn executable_status(params: &Value) -> Value {
       "error": format!("Interpreter status failed: {error}")
     }),
   }
+}
+
+fn sanitize_interpreter_environment(command: &mut Command, executable: &str) {
+  if !is_python_executable(executable) {
+    return;
+  }
+  for variable in ["PYTHONHOME", "PYTHONPATH", "PYTHONEXECUTABLE", "PYTHONUSERBASE"] {
+    command.env_remove(variable);
+  }
+}
+
+fn is_python_executable(executable: &str) -> bool {
+  let executable_name = Path::new(executable)
+    .file_name()
+    .and_then(|value| value.to_str())
+    .unwrap_or("");
+  executable_name == "python" || executable_name == "python3" || executable_name.starts_with("python3.")
 }
 
 fn first_lines(bytes: &[u8], limit: usize) -> String {
@@ -637,5 +657,13 @@ mod tests {
   fn unknown_execution_is_rejected() {
     let service = ExecutionService::new();
     assert!(service.execution_status(&json!({ "executionId": "missing" })).is_err());
+  }
+
+  #[test]
+  fn identifies_python_interpreters_for_environment_cleanup() {
+    assert!(is_python_executable("python"));
+    assert!(is_python_executable("/usr/bin/python3"));
+    assert!(is_python_executable("python3.12"));
+    assert!(!is_python_executable("node"));
   }
 }
