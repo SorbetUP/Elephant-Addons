@@ -176,7 +176,18 @@ export default class ElephantCodeExecutionAddon {
     const language = this.getLanguage(block)
     const interpreter = this.resolveInterpreter(language)
     const code = this.getCode(block)
-    if (!code) return
+    console.info('[elephant.code-execution] run:start', {
+      language,
+      codeLength: code.length,
+      blockTextLength: String(block.textContent || '').length
+    })
+    if (!code.trim()) {
+      output.hidden = false
+      output.textContent = 'No executable code was found in this block.'
+      output.dataset.exitCode = 'configuration-error'
+      console.warn('[elephant.code-execution] run:empty-code', { language })
+      return
+    }
     if (!interpreter?.executable) {
       output.hidden = false
       output.textContent = `No interpreter is configured for ${language}.`
@@ -188,10 +199,17 @@ export default class ElephantCodeExecutionAddon {
     button.textContent = 'Starting…'
     output.hidden = false
     output.textContent = `Checking ${interpreter.label || interpreter.id}…`
+    output.dataset.exitCode = ''
     try {
       const status = await this.service('interpreter.status', {
         executable: interpreter.executable,
         args: interpreter.args
+      })
+      console.info('[elephant.code-execution] run:interpreter-status', {
+        language,
+        executable: interpreter.executable,
+        available: status?.available === true,
+        versionPresent: Boolean(String(status?.version || status?.stderr || '').trim())
       })
       if (!status?.available) throw new Error(status?.error || `${interpreter.executable} is unavailable`)
 
@@ -205,6 +223,7 @@ export default class ElephantCodeExecutionAddon {
       })
       const executionId = String(started?.executionId || '')
       if (!executionId) throw new Error('The Code execution service returned no execution id.')
+      console.info('[elephant.code-execution] run:started', { executionId, language })
       this.activeExecutions.set(block, { executionId, cancelRequested: false })
       button.disabled = false
       button.textContent = 'Stop'
@@ -220,6 +239,11 @@ export default class ElephantCodeExecutionAddon {
           ? 'timeout'
           : String(result.code ?? 0)
       output.dataset.truncated = String(Boolean(result.truncated))
+      console.info('[elephant.code-execution] run:complete', {
+        executionId,
+        exitCode: output.dataset.exitCode,
+        truncated: output.dataset.truncated === 'true'
+      })
       if (!this.config.retainOutput && result.success) {
         this.window.setTimeout(() => {
           output.hidden = true
@@ -230,6 +254,10 @@ export default class ElephantCodeExecutionAddon {
     } catch (error) {
       output.textContent = error instanceof Error ? error.message : String(error)
       output.dataset.exitCode = 'error'
+      console.error('[elephant.code-execution] run:error', {
+        language,
+        error: output.textContent
+      })
     } finally {
       this.activeExecutions.delete(block)
       button.disabled = false
