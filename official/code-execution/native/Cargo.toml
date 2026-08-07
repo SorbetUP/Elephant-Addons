@@ -1,6 +1,6 @@
 [package]
 name = "elephant-code-execution-sidecar"
-version = "2.2.2"
+version = "2.2.1"
 edition = "2021"
 license = "MIT"
 publish = false
