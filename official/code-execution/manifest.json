@@ -5,7 +5,7 @@
   "description": "Runs fenced code blocks with package-owned interpreters, bounded output, timeout and interruption.",
   "author": "Elephant",
   "apiVersion": 1,
-  "minAppVersion": "0.18.9",
+  "minAppVersion": "0.1.0",
   "runtime": {
     "type": "javascript-worker",
     "entry": "main.js"
